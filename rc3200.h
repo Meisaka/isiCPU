@@ -2,7 +2,7 @@
 #ifndef _RC3200_H_
 #define _RC3200_H_
 
-#include <stding.h>
+#include <stdint.h>
 #include <string.h>
 
 
@@ -41,3 +41,6 @@ int RC3200_run(RC3200 *);
 int RC3200_Interupt(RC3200 *, uint32_t msg);
 // Can interupt
 int RC3200_GetInteruptStatus();
+
+#endif
+
