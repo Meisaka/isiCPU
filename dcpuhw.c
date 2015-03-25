@@ -67,13 +67,13 @@ int HWM_FreeAll(DCPU *cpu)
 	if(!cpu) return -1;
 	if(cpu->hwdata) {
 #if DEBUG_MEM == 1
-	fprintf(stderr, "hwm: free HW mem\n");
+		fprintf(stderr, "hwm: free HW mem\n");
 #endif
 		free(cpu->hwdata);
 	}
 	if(cpu->hwloadout) {
 #if DEBUG_MEM == 1
-	fprintf(stderr, "hwm: free HW-config\n");
+		fprintf(stderr, "hwm: free HW-config\n");
 #endif
 		free(cpu->hwloadout);
 	}
@@ -90,7 +90,7 @@ int HWM_DeviceAdd(DCPU *cpu, int did)
 	if(k < cpu->hwcount) {
 		i = HWM_GetSize(did);
 #if DEBUG_MEM == 1
-	fprintf(stderr, "hwinit: adding %i size %i)\n", did, i);
+		fprintf(stderr, "hwinit: adding %i size %i)\n", did, i);
 #endif
 		hws[k].id = did;
 		hws[k].rofs = cpu->hwmem;

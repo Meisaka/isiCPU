@@ -99,12 +99,12 @@ int Nya_LEM_HWI(void * hwd, struct systemhwstate * isi)
 	switch(isi->regs[0]) {
 	case 0:
 		dsp->dspmem = isi->regs[1];
-	fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
+		fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
 		Nya_LEM_voiddisp(dsp,isi);
 		break;
 	case 1: // Map Font
 		dsp->fontmem = isi->regs[1];
-	fprintf(stderr, "NYALEM: Font set to %04x \n", dsp->fontmem);
+		fprintf(stderr, "NYALEM: Font set to %04x \n", dsp->fontmem);
 		break;
 	case 2: // Map Palette
 		dsp->palmem = isi->regs[1];
@@ -157,34 +157,34 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 	if(!isi->netwfd) return 0; // quit if no network
 	if(dsp->dspmem) {
 		if(dsp->dlyu < 500) {
-		dsa = dsp->dspmem;
-		dur = 0;
-		ddi = 0;
-		dss = 0;
-		dse = 0;
-		
-		ddb[0] = 0xE7AA; // Type code
+			dsa = dsp->dspmem;
+			dur = 0;
+			ddi = 0;
+			dss = 0;
+			dse = 0;
+			
+			ddb[0] = 0xE7AA; // Type code
 
-		// Simple display delta protocol
-		for(dsl = 0; dsl < 384; dsl++) {
-			dss = dsl;
-			while(dsl < 384 && isi->mem[dsa+dsl] != dsp->cachedisp[dsl]) {
-				ddb[5+ddi] = isi->mem[dsa+dsl];
-				dsp->cachedisp[dsl] = isi->mem[dsa+dsl];
-				ddi++; dsl++;
-			}
-			if(ddi) {
-				ddb[1] = 0; // ID
-				ddb[2] = 0; // ID
-				ddb[3] = dss; // address
-				ddb[4] = ddi; // length (words)
-				if(isi->netwfd) {
-					write(isi->netwfd, (char*)ddb, 10+(ddi*2));
+			// Simple display delta protocol
+			for(dsl = 0; dsl < 384; dsl++) {
+				dss = dsl;
+				while(dsl < 384 && isi->mem[dsa+dsl] != dsp->cachedisp[dsl]) {
+					ddb[5+ddi] = isi->mem[dsa+dsl];
+					dsp->cachedisp[dsl] = isi->mem[dsa+dsl];
+					ddi++; dsl++;
 				}
-				ddi = 0;
+				if(ddi) {
+					ddb[1] = 0; // ID
+					ddb[2] = 0; // ID
+					ddb[3] = dss; // address
+					ddb[4] = ddi; // length (words)
+					if(isi->netwfd) {
+						write(isi->netwfd, (char*)ddb, 10+(ddi*2));
+					}
+					ddi = 0;
+				}
 			}
-		}
-		dsp->dlyu = 0;
+			dsp->dlyu = 0;
 		} else {
 			dsp->dlyu++;
 		}
@@ -192,3 +192,4 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 
 	return 0;
 }
+

@@ -47,3 +47,4 @@ int RC3200_Interupt(RC3200 * cpu, uint32_t msg)
 int RC3200_GetInteruptStatus()
 {
 }
+

@@ -28,3 +28,4 @@ typedef struct stASMENT {
 } AsmEnt;
 
 int DCPUASM_asm(const char *, int, short*);
+

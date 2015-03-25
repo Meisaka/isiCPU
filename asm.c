@@ -163,321 +163,312 @@ int DCPUASM_asm(const char * txt, int txtsize, short* ram)
 	lparam = 0; // section parameter count
 	param = 0;
 
-	for(i = 0; i < txtsize; i++)
-	{
-		if(mode == 100)
-		{
-		switch(txt[i])
-		{
-			case 10:
-			case 13:
-				mode = 0;
-			break;
-		}
+	for(i = 0; i < txtsize; i++) {
+		if(mode == 100) {
+			switch(txt[i]) {
+				case 10:
+				case 13:
+					mode = 0;
+				break;
+			}
 		} else if( mode == 99) {
-		switch(txt[i]) {
-		case 13:
-		case 10:
-			mode = 0;
-			break;
-		case '"':
-			mode = lmode;
-			lmode = 99;
-		default:
-			break;
-		}
+			switch(txt[i]) {
+			case 13:
+			case 10:
+				mode = 0;
+				break;
+			case '"':
+				mode = lmode;
+				lmode = 99;
+			default:
+				break;
+			}
 		}
 		if(mode < 80) {
 
-		switch(txt[i])
-		{
-		case ':':
-			// label
-			if(mode == 0 || mode == 1)
-			{
-				mode = 2;
-				k = 0; wtin = 1;
-				lwtin = 1;
-				lblc = 1;
-			} else if(mode == 2 && lblc == 0) {
-				mode = 3;
-				lblc++;
-			} else {
-				fprintf(stderr, ERC_INVDLM1, l); erc++;
-			}
-			ws = 1; break;
-		case ' ':
-		case '\t':
-			if(mode == 0) mode = 1;
-			if(mode == 2) mode = 3;
-			if(mode == 4) { mode = 7; }
-			if(mode == 8) { lwtin = 5;mode = 7; }
-			wtin = 0;
-			// white space
-			ws = 1; break;
-		case 13: // CR is ignored (reset mode but same line)
-		case ';': // Comments run up to the end of the line
-		case '#': // different comment char
-			if(txt[i] == '#' || txt[i] == ';') { // A comment will terminate the line
-			// comment
-			mode = 100;
-			}
-			break;
-		case 10:
-			ws = 1; break;
-		case '[':
-			if(mode < 7) {
-			fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
-			} else {
-				if(lparam) {
-			fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
-				} else if(indrc) {
-			fprintf(stderr, "Line %d: Syntax Error - multiple '['\n", l); erc++;
-				} else {
-				indrc = 1;
-				if(nmod || lparam) {
-			fprintf(stderr, ERC_INDOUT1, l); erc++;
-				}
-				lparam++;
-				nmod++;
-				}
-			}
-			ws = 1; break;
-		case '+':
-			nmod++;
-			ws = 1; break;
-		case ']':
-			if(mode < 7) {
-			fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
-			} else {
-				if(indrc == 1) {
-					indrc = 2;
-				} else {
-					if(indrc == 2) {
-			fprintf(stderr, "Line %d: Syntax Error - multiple ']'\n", l); erc++;
-					} else {
-			fprintf(stderr, "Line %d: Syntax Error - unmatched ']'\n", l); erc++;
-					}
-				}
-			}
-			ws = 1; break;
-		case '"':
-			if(lmode != 99) {
-			lmode = mode;
-			mode = 99;
-			lparam++;
-			} else {
-				//fprintf(stderr, "<.STR>");
-				lmode = 0;
-				if(opin != 1) {
-					fprintf(stderr, "Line %d: Error - string only allowed with \"DAT\"\n",l);
-				}
-			}
-			ws = 0; break;
-		case '*':
-			ws = 1; break;
-		case '.':
-			if(mode == 0 || mode == 1 || mode == 3)
-			{
-				mode = 5;
-				k = 0; wtin = 1;
-				lwtin = 2;
-				endostrings[k++] = txt[i];
-			} else {
-			fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
-			}
-			lws = 0; ws = 0; break;
-		case ',':
-			if(mode < 7) {
-			fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
-			} else {
-				if(indrc == 1) {
-			fprintf(stderr, "Line %d: Syntax Error - unmatched '['\n", l); erc++;
-				}
-				if(!lparam) {
-			fprintf(stderr, "Line %d: Syntax Error - missing parameter before ','\n", l);
-				}
-				if(lparam > nmod+1) {
-			fprintf(stderr, "Line %d: Syntax Error - Missing ','\n", l);
-				}
-			}
-			indrc = 0;
-			wtin = 0;
-			nmod = 0;
-			lparam = 0;
-			param++;
-			ws = 1; break;
-		default:
-			if(indrc == 2) {
-				fprintf(stderr, ERC_INDOUT1, l); erc++;
-			} else {
-			if(txt[i] == '-' || (txt[i] >= '0' && txt[i] <= '9')) {
-				if(ws) { // Interpret number
-					if(wtin) { // continue read
-						endostrings[k++] = txt[i];
-					} else { // start reading
-						k = 0; wtin = 1;
-						lparam++;lwtin = 5;
-						endostrings[k++] = txt[i];
-					}
-				} else { // Part of something else
-					if(wtin) { // read it?
-						endostrings[k++] = txt[i];
-					} else { // no, we don't want this
-			fprintf(stderr, "Line %d: (NI)Error unexpected charactor: '%c'\n",l, txt[i]); erc++;
-					}
-				}
-			} else if(txt[i] == '_' || ((txt[i] | 0x20) >= 'a' && (txt[i] | 0x20) <= 'z')) // read labels... for the most part.
-			{
-				if(mode == 0) { // no label marker ':'
-					mode = 2; // this is still valid Asm
+			switch(txt[i]) {
+			case ':':
+				// label
+				if(mode == 0 || mode == 1) {
+					mode = 2;
 					k = 0; wtin = 1;
 					lwtin = 1;
-					//fprintf(stderr, "Line %d: Warning - implicit label\n", l);
+					lblc = 1;
+				} else if(mode == 2 && lblc == 0) {
+					mode = 3;
+					lblc++;
+				} else {
+					fprintf(stderr, ERC_INVDLM1, l); erc++;
 				}
-				if(mode == 1 || mode == 3) { // label marked
-					mode = 4;
-					lwtin = 4;
-					k = 0; wtin = 1;
+				ws = 1; break;
+			case ' ':
+			case '\t':
+				if(mode == 0) mode = 1;
+				if(mode == 2) mode = 3;
+				if(mode == 4) { mode = 7; }
+				if(mode == 8) { lwtin = 5;mode = 7; }
+				wtin = 0;
+				// white space
+				ws = 1; break;
+			case 13: // CR is ignored (reset mode but same line)
+			case ';': // Comments run up to the end of the line
+			case '#': // different comment char
+				if(txt[i] == '#' || txt[i] == ';') { // A comment will terminate the line
+					// comment
+					mode = 100;
 				}
-				if((mode == 7 || mode == 8) && (!wtin))
-				{ // identifiers in the args
-					//fprintf(stderr, "<II%d,%d %c>", l, mode, txt[i]);
-					mode = 8;lwtin = 5;
-					k = 0; wtin = 1;
+				break;
+			case 10:
+				ws = 1; break;
+			case '[':
+				if(mode < 7) {
+					fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
+				} else {
+					if(lparam) {
+						fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
+					} else if(indrc) {
+						fprintf(stderr, "Line %d: Syntax Error - multiple '['\n", l); erc++;
+					} else {
+						indrc = 1;
+						if(nmod || lparam) {
+							fprintf(stderr, ERC_INDOUT1, l); erc++;
+						}
+						lparam++;
+						nmod++;
+					}
+				}
+				ws = 1; break;
+			case '+':
+				nmod++;
+				ws = 1; break;
+			case ']':
+				if(mode < 7) {
+					fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
+				} else {
+					if(indrc == 1) {
+						indrc = 2;
+					} else {
+						if(indrc == 2) {
+							fprintf(stderr, "Line %d: Syntax Error - multiple ']'\n", l); erc++;
+						} else {
+							fprintf(stderr, "Line %d: Syntax Error - unmatched ']'\n", l); erc++;
+						}
+					}
+				}
+				ws = 1; break;
+			case '"':
+				if(lmode != 99) {
+					lmode = mode;
+					mode = 99;
 					lparam++;
+				} else {
+					//fprintf(stderr, "<.STR>");
+					lmode = 0;
+					if(opin != 1) {
+						fprintf(stderr, "Line %d: Error - string only allowed with \"DAT\"\n",l);
+					}
 				}
-				if(wtin) { // read chars?
+				ws = 0; break;
+			case '*':
+				ws = 1; break;
+			case '.':
+				if(mode == 0 || mode == 1 || mode == 3) {
+					mode = 5;
+					k = 0; wtin = 1;
+					lwtin = 2;
 					endostrings[k++] = txt[i];
+				} else {
+					fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
 				}
-			} else { // doesn't match anything... it's no good
-				fprintf(stderr, "Line %d: (DF)Error unknown charactor: '%c'\n",l, txt[i]); erc++;
+				lws = 0; ws = 0; break;
+			case ',':
+				if(mode < 7) {
+					fprintf(stderr, ERC_GENSYN2, l, txt[i]); erc++;
+				} else {
+					if(indrc == 1) {
+						fprintf(stderr, "Line %d: Syntax Error - unmatched '['\n", l); erc++;
+					}
+					if(!lparam) {
+						fprintf(stderr, "Line %d: Syntax Error - missing parameter before ','\n", l);
+					}
+					if(lparam > nmod+1) {
+						fprintf(stderr, "Line %d: Syntax Error - Missing ','\n", l);
+					}
+				}
+				indrc = 0;
+				wtin = 0;
+				nmod = 0;
+				lparam = 0;
+				param++;
+				ws = 1; break;
+			default:
+				if(indrc == 2) {
+					fprintf(stderr, ERC_INDOUT1, l); erc++;
+				} else {
+					if(txt[i] == '-' || (txt[i] >= '0' && txt[i] <= '9')) {
+						if(ws) { // Interpret number
+							if(wtin) { // continue read
+								endostrings[k++] = txt[i];
+							} else { // start reading
+								k = 0; wtin = 1;
+								lparam++;lwtin = 5;
+								endostrings[k++] = txt[i];
+							}
+						} else { // Part of something else
+							if(wtin) { // read it?
+								endostrings[k++] = txt[i];
+							} else { // no, we don't want this
+								fprintf(stderr, "Line %d: (NI)Error unexpected charactor: '%c'\n",l, txt[i]); erc++;
+							}
+						}
+					} else if(txt[i] == '_' || ((txt[i] | 0x20) >= 'a' && (txt[i] | 0x20) <= 'z')) {
+						// read labels... for the most part.
+						if(mode == 0) { // no label marker ':'
+							mode = 2; // this is still valid Asm
+							k = 0; wtin = 1;
+							lwtin = 1;
+							//fprintf(stderr, "Line %d: Warning - implicit label\n", l);
+						}
+						if(mode == 1 || mode == 3) { // label marked
+							mode = 4;
+							lwtin = 4;
+							k = 0; wtin = 1;
+						}
+						if((mode == 7 || mode == 8) && (!wtin)) { // identifiers in the args
+							//fprintf(stderr, "<II%d,%d %c>", l, mode, txt[i]);
+							mode = 8;lwtin = 5;
+							k = 0; wtin = 1;
+							lparam++;
+						}
+						if(wtin) { // read chars?
+							endostrings[k++] = txt[i];
+						}
+					} else { // doesn't match anything... it's no good
+						fprintf(stderr, "Line %d: (DF)Error unknown charactor: '%c'\n",l, txt[i]); erc++;
+					}
+				}
+				ws = 0; break;
 			}
+			if(k + ramused >= ramsize) { // got RAM?
+				tmpp = realloc(ramblock, ramsize + 1000); // get some
+				if(!tmpp) { // we got it?
+					fprintf(stderr, "Fatal Error: Out of Memory!\n"); erc++;
+					goto lstopasm; // XXX: evil
+				}
+				ramblock = (char*)tmpp;
+				ramsize += 1000;
 			}
-			ws = 0; break;
-		}
-		if(k + ramused >= ramsize) { // got RAM?
-			tmpp = realloc(ramblock, ramsize + 1000); // get some
-			if(!tmpp) { // we got it?
-				fprintf(stderr, "Fatal Error: Out of Memory!\n"); erc++;
-				goto lstopasm; // XXX: evil
-			}
-			ramblock = (char*)tmpp;
-			ramsize += 1000;
-		}
 
-		if(lws != ws) { // whitespace seperation?
-			if(lws == 0 && lwtin && k) {
-				endostrings[k] = 0; // make a C-style string
-				//fprintf(stderr, "<%d'%d:%s>",mode,lwtin,endostrings);
-				// process it!!!
-				if(lwtin == 1) { // labels
-					if(k == 3) {
-					for(j = 0; ALLI[j].nmo; j++) {
-						ttoc = ALLI[j].nmo;
-						for(n=0; ttoc[n] != 0 && ttoc[n] == toupper(endostrings[n]) && n < k; n++) { }
-						if(ttoc[n] == 0 && n == k) { break; }
+			if(lws != ws) { // whitespace seperation?
+				if(lws == 0 && lwtin && k) {
+					endostrings[k] = 0; // make a C-style string
+					//fprintf(stderr, "<%d'%d:%s>",mode,lwtin,endostrings);
+					// process it!!!
+					if(lwtin == 1) { // labels
+						if(k == 3) {
+							for(j = 0; ALLI[j].nmo; j++) {
+								ttoc = ALLI[j].nmo;
+								for(n=0; ttoc[n] != 0 && ttoc[n] == toupper(endostrings[n]) && n < k; n++) { }
+								if(ttoc[n] == 0 && n == k) { break; }
+							}
+						}
+						if(k==3 && ALLI[j].nmo) {
+							opin = j + 1;
+							mode = 7;
+							fprintf(stderr, "Line %d: Warning - opcode at beginning of line\n", l);
+						} else {
+							// process label
+							if(!lblc) {
+								// TODO this should be an optional message
+								fprintf(stderr, "Line %d: Unmarked label - expected ':'\n", l);
+							}
+						}
 					}
+					if(lwtin == 2) { // .directives
+						fprintf(stderr, "|LMM%s|\n", endostrings);
+						mode = 8; 
 					}
-					if(k==3 && ALLI[j].nmo) {
-						opin = j + 1;
+					if(lwtin == 4) { // opcodes
+						for(j = 0; ALLI[j].nmo; j++) {
+							ttoc = ALLI[j].nmo;
+							for(n=0; ttoc[n] != 0 && ttoc[n] == toupper(endostrings[n]) && n < k; n++) {
+							}
+							if(ttoc[n] == 0 && n == k) {
+								// opcode success
+	//fprintf(stderr, "Line %d: (OI)opcode %04x '%s'\n",l, ALLI[j].opu | (ALLI[j].opb << 5), endostrings);
+								break;
+							}
+						}
+
+						if(!ALLI[j].nmo) {
+							fprintf(stderr, "Line %d: (OI)Error unknown opcode '%s'\n",l, endostrings); erc++;
+						} else {
+							opin = j + 1;
+					//fprintf(stderr, "<OI:%s:%d>",endostrings, opin);
+						}
 						mode = 7;
-					fprintf(stderr, "Line %d: Warning - opcode at beginning of line\n", l);
-					} else {
-						// process label
-						if(!lblc) {
-				// TODO this should be an optional message
-				fprintf(stderr, "Line %d: Unmarked label - expected ':'\n", l);
+					}
+					if(lwtin == 5) { // identifiers/numbers
+						wtin = 0;
+						mode = 7;
+						if(!strnequu(endostrings, "PiCK", 4)) {
+							fprintf(stderr, "%i: %s is not currently supported.\n", l, endostrings);
+							lparam--;
 						}
 					}
+					lwtin = 0;
 				}
-				if(lwtin == 2) { // .directives
-				fprintf(stderr, "|LMM%s|\n", endostrings);
-					mode = 8; 
-				}
-				if(lwtin == 4) { // opcodes
-					for(j = 0; ALLI[j].nmo; j++) {
-						ttoc = ALLI[j].nmo;
-						for(n=0; ttoc[n] != 0 && ttoc[n] == toupper(endostrings[n]) && n < k; n++) {
-						}
-						if(ttoc[n] == 0 && n == k) {
-							// opcode success
-//fprintf(stderr, "Line %d: (OI)opcode %04x '%s'\n",l, ALLI[j].opu | (ALLI[j].opb << 5), endostrings);
-							break;
-						}
-					}
+				//wtin = 0;
+				lws = ws;
+			}
 
-					if(!ALLI[j].nmo) {
-				fprintf(stderr, "Line %d: (OI)Error unknown opcode '%s'\n",l, endostrings); erc++;
-					} else {
-						opin = j + 1;
-				//fprintf(stderr, "<OI:%s:%d>",endostrings, opin);
-					}
-					mode = 7;
+			if(txt[i] == 10) {
+				// validate line
+				if(indrc == 1) {
+					fprintf(stderr, "Line %d: (LE) Syntax Error - unmatched '['\n", l); erc++;
 				}
-				if(lwtin == 5) { // identifiers/numbers
-					wtin = 0;
-					mode = 7;
-					if(!strnequu(endostrings, "PiCK", 4)) {
-					fprintf(stderr, "%i: %s is not currently supported.\n", l, endostrings);
-					lparam--;
+				if(lparam > nmod+1) {
+					fprintf(stderr, "Line %d: Syntax Error - Missing ','\n", l);
+				}
+				param++;
+
+				if(!opin) {
+					// labels/comments/blank lines
+					//fprintf(stderr, "%d: no opcode\n",l);
+				} else { // active lines
+					if(ALLI[opin-1].opc > -1 && param > ALLI[opin-1].opc) {
+						fprintf(stderr, "Line %d: (LE) Syntax Error - moo many arguments\n", l); erc++;
 					}
 				}
-				lwtin = 0;
-			}
-			//wtin = 0;
-			lws = ws;
-		}
+				// Process line
 
-		if(txt[i] == 10)
-		{
-			// validate line
-			if(indrc == 1) {
-			fprintf(stderr, "Line %d: (LE) Syntax Error - unmatched '['\n", l); erc++;
-			}
-			if(lparam > nmod+1) {
-			fprintf(stderr, "Line %d: Syntax Error - Missing ','\n", l);
-			}
-			param++;
+				// Finish line processing here //
+				// Reset for next line
+				l++; // increase line count
+				//fprintf(stderr, "\n", ll, l);
+				ll = i;
 
-			if(!opin) {
-			// labels/comments/blank lines
-			//fprintf(stderr, "%d: no opcode\n",l);
-			} else { // active lines
-				if(ALLI[opin-1].opc > -1 && param > ALLI[opin-1].opc) {
-		fprintf(stderr, "Line %d: (LE) Syntax Error - moo many arguments\n", l); erc++;
-				}
+				// new line
+				mode = 0;
+				indrc = 0;
+				reg = 0;
+				rval = 0;
+				ws = 0;
+				wtin = 0;
+				lparam = 0;
+				param = 0;
+				nmod = 0;
+				opin = 0;
+				lblc = 0;
 			}
-			// Process line
-
-			// Finish line processing here //
-			// Reset for next line
-			l++; // increase line count
-			//fprintf(stderr, "\n", ll, l);
-			ll = i;
-
-			// new line
-			mode = 0;
-			indrc = 0;
-			reg = 0;
-			rval = 0;
-			ws = 0;
-			wtin = 0;
-			lparam = 0;
-			param = 0;
-			nmod = 0;
-			opin = 0;
-			lblc = 0;
-		}
-		if(erc > 50) {
-			fprintf(stderr, ERC_TOOMANY); erc++;
-			break;
-		}
-		// End of loop
+			if(erc > 50) {
+				fprintf(stderr, ERC_TOOMANY); erc++;
+				break;
+			}
+			// End of loop
 		}
 	}
-	if(erc)
-	{
+	if(erc) {
 		fprintf(stderr, ERC_PASSERR);
 		return -1;
 	}
@@ -486,3 +477,4 @@ lstopasm:
 	free(ramblock);
 	return 0;
 }
+

@@ -30,3 +30,4 @@ typedef struct stRC1600 {
 	void * hwloadout;
 	void * hwdata;
 } RC1600;
+

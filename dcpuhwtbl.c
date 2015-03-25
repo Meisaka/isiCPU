@@ -35,3 +35,4 @@ struct stdevtable devtable[] = {
 {0,0,0,0,0,0,NULL,
 	0,0,0,0,0} // End of entries
 };
+
