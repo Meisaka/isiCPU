@@ -25,18 +25,19 @@ static struct timespec LTUTime;
 static int fdserver;
 static int haltnow;
 
-static CPUSlot allcpus[500];
 static int cpucount;
 
 static const int listenportnumber = 58704;
 
 enum {
-	CPUSMAX = 300
+	CPUSMAX = 700,
+	CPUSMIN = 20
 };
-static const int numberofcpus = CPUSMAX;
+static int numberofcpus = 40;
 
-	DCPU cpl[CPUSMAX];
-	short mem[CPUSMAX][0x10000];
+static CPUSlot allcpus[CPUSMAX];
+DCPU cpl[CPUSMAX];
+short mem[CPUSMAX][0x10000];
 
 static const char * const gsc_usage = 
 "Usage:\n%s [-Desr] [-c <asmfile>] [-B <binfile>]\n\n"
@@ -166,6 +167,26 @@ void sysfaulthdl(int ssn) {
 	}
 }
 
+void showdiag_dcpu(const DCPU* cpu)
+{
+	fprintf(stderr,
+	" A    B    C    X    Y    Z   \n"
+	"%04x %04x %04x %04x %04x %04x \n"
+	" I    J    PC   SP   EX   IA  \n"
+	"%04x %04x %04x %04x %04x %04x \n",
+	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
+	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA);
+}
+void showdiag_up(int l)
+{
+	fprintf(stderr, "\e[%dA", l);
+}
+
+void fetchtime(struct timespec * t)
+{
+	clock_gettime(CLOCK_MONOTONIC_RAW, t);
+}
+
 int main(int argc, char**argv, char**envp)
 {
 
@@ -180,8 +201,12 @@ int main(int argc, char**argv, char**envp)
 	int cux;
 	long nsec_err;
 	long long tcc;
-	long long ccq;
-	long long lucycles;
+	uintptr_t gccq = 0;
+	uintptr_t glccq = 0;
+	uintptr_t ccr = 0;
+	uintptr_t lucycles = 0;
+	uintptr_t lucpus = 0;
+	int paddlimit = 0;
 	int dbg;
 
 	struct timeval ltv;
@@ -304,12 +329,12 @@ int main(int argc, char**argv, char**envp)
 		}
 	} else if(rqrun == 1) { // normal operation /////////////////////////
 	
-		for(cux = 0; cux < numberofcpus; cux++) {
+		for(cux = 0; cux < CPUSMAX; cux++) {
 			allcpus[cux].archtype = ARCH_DCPU;
 			allcpus[cux].memsize = 0x10000;
 			allcpus[cux].cpustate = &cpl[cux];
 			allcpus[cux].memptr = mem[cux];
-			allcpus[cux].runrate = 100000; // Nano seconds per cycle (100kHz)
+			allcpus[cux].runrate = 10000; // Nano seconds per cycle (100kHz)
 			//allcpus[cux].RunCycles = DCPU_run; // TODO: not used yet
 			allcpus[cux].cyclequeue = 0; // Should always be reset
 			DCPU_init(allcpus[cux].cpustate, allcpus[cux].memptr);
@@ -331,66 +356,48 @@ int main(int argc, char**argv, char**envp)
 		
 		sigaction(SIGINT, &hnler, NULL);
 
-		printf(" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA\n");
-		clock_gettime(CLOCK_MONOTONIC_RAW, &LUTime);
-		allcpus[cux].lrun.tv_sec = LUTime.tv_sec;
-		allcpus[cux].lrun.tv_nsec= LUTime.tv_nsec;
-		clock_gettime(CLOCK_MONOTONIC_RAW, &LTUTime);
-		tcc = 0;
+		for(cux = 0; cux < numberofcpus; cux++) {
+			fetchtime(&allcpus[cux].lrun);
+		}
+		fetchtime(&LTUTime);
 		lucycles = 0; // how many cycles ran (debugging)
 		cux = 0; // CPU index - currently never changes
 		while(!haltnow) {
 
 			if(((DCPU*)allcpus[cux].cpustate)->MODE != BURNING) {
-				LUTime.tv_sec = allcpus[cux].lrun.tv_sec;
-				LUTime.tv_nsec = allcpus[cux].lrun.tv_nsec;
-				clock_gettime(CLOCK_MONOTONIC_RAW, &CUTime);
-				DeltaTime.tv_sec = CUTime.tv_sec - LUTime.tv_sec;
-				DeltaTime.tv_nsec = ((CUTime.tv_nsec/* + (DeltaTime.tv_sec * 1000000000)*/) - LUTime.tv_nsec);
-				double clkdelta;
-				clkdelta = ((double)(CUTime.tv_sec - LUTime.tv_sec)) + (((double)CUTime.tv_nsec) * 0.000000001);
-				clkdelta-= ((double)LUTime.tv_nsec) * 0.000000001;
+				struct timespec *LRun = &allcpus[cux].lrun;
+				LUTime.tv_sec = LRun->tv_sec;
+				LUTime.tv_nsec = LRun->tv_nsec;
+				fetchtime(LRun);
+				DeltaTime.tv_sec = LRun->tv_sec - LUTime.tv_sec;
+				DeltaTime.tv_nsec = LRun->tv_nsec - LUTime.tv_nsec;
+				DeltaTime.tv_nsec += ccr;
 				if(DeltaTime.tv_sec) {
 					DeltaTime.tv_nsec += 1000000000;
 				}
 				nsec_err = 0;
+				intptr_t ccq = 0;
 				if(allcpus[cux].runrate > 0) {
 					ccq = (DeltaTime.tv_nsec / allcpus[cux].runrate);
-					ccq = clkdelta * (((double)allcpus[cux].runrate) * 15.0);
-					//nsec_err = DeltaTime.tv_nsec - (ccq * allcpus[cux].runrate);
-					tcc += DeltaTime.tv_nsec;
+					ccr = (DeltaTime.tv_nsec % allcpus[cux].runrate);
+					ccq += allcpus[cux].cyclequeue;
 				} else {
 					ccq = 0;
 				}
 
-				if(ccq > 0) {
-					ccq += allcpus[cux].cyclequeue;
-				}
-				if(ccq > 0) {
-					for(j = 0; ccq > 0 && j < 1001; j++) { // limit calls
+				if(ccq) {
+					for(j = 1000000000 / allcpus[cux].runrate; ccq && j; j--) { // limit calls
 						//TODO dynamic / multiple CPUs: call the right one.
 						// with memory and state.
 						DCPU_run(allcpus[cux].cpustate,allcpus[cux].memptr);
 						//TODO some hardware may need to work at the same time
-						//tcc += cpl[0].cycl;
-						//if(cux == 0) {
 						lucycles += ((DCPU*)allcpus[cux].cpustate)->cycl;
-						//}
 						ccq -= ((DCPU*)allcpus[cux].cpustate)->cycl; // each op uses cycles, can be negative
 						((DCPU*)allcpus[cux].cpustate)->cycl = 0;
 					}
 				}
 				allcpus[cux].cyclequeue = ccq; // save when done
-				/*
-				nsec_err = lucycles * allcpus[cux].runrate;
-				allcpus[cux].lrun.tv_nsec += nsec_err;
-				if(allcpus[cux].lrun.tv_nsec > 1000000000) {
-					allcpus[cux].lrun.tv_nsec -= 1000000000;
-					allcpus[cux].lrun.tv_sec++;
-				}
-				*/
-				clock_gettime(CLOCK_MONOTONIC_RAW, &allcpus[cux].lrun);
-				//allcpus[cux].lrun.tv_nsec -= nsec_err;
+				gccq += ccq;
 
 				// If the queue has cycles left over then the server may be overloaded
 				// some CPUs should be slowed or moved to a different server/thread
@@ -398,21 +405,21 @@ int main(int argc, char**argv, char**envp)
 				HWM_TickAll(allcpus[cux].cpustate, fdserver,0);
 			}
 
-			cux++; if(cux > numberofcpus - 1) cux = 0;
 			if(!dbg) {
 				double clkdelta;
 				float clkrate;
-				clock_gettime(CLOCK_MONOTONIC_RAW, &TUTime);
+				fetchtime(&TUTime);
 				if(TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between debug output
-					fprintf(stderr, "%04x %04x %04x %04x %04x %04x %04x %04x ",cpl[0].R[0],cpl[0].R[1],cpl[0].R[2],cpl[0].R[3],cpl[0].R[4],cpl[0].R[5],cpl[0].R[6],cpl[0].R[7]);
-					fprintf(stderr, "%04x %04x %04x %04x ",cpl[0].PC,cpl[0].SP,cpl[0].EX,cpl[0].IA);
+					showdiag_dcpu((DCPU*)allcpus[0].cpustate);
 					clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
 					clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
+					if(!lucpus) lucpus = 1;
 					clkrate = ((((double)lucycles) / clkdelta) * 0.001) / numberofcpus;
+					fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz  (%d)\r", clkdelta, numberofcpus, clkrate, gccq);
+					showdiag_up(4);
+					fetchtime(&LTUTime);
 					lucycles = 0;
-					fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz  \r", clkdelta, numberofcpus, clkrate);
-					tcc = 0;
-					clock_gettime(CLOCK_MONOTONIC_RAW, &LTUTime);
+					lucpus = 0;
 				}
 
 				ltv.tv_sec = 0;
@@ -425,7 +432,6 @@ int main(int argc, char**argv, char**envp)
 					if(i > 0) {
 						switch(cc) {
 						case 10:
-				fprintf(stderr," A    B    C    X    Y    Z    I    J    PC   SP   EX   IA\n");
 							break;
 						case 'l':
 							HWM_TickAll(&cpl[0], fdserver,0x3400);
@@ -438,6 +444,27 @@ int main(int argc, char**argv, char**envp)
 						}
 					}
 				}
+			}
+			cux++;
+			if(cux > numberofcpus - 1) {
+				if(gccq) {
+					if(numberofcpus > CPUSMIN) {
+						if(gccq > glccq) numberofcpus--;
+					}
+					paddlimit = 0;
+				} else {
+					if(numberofcpus < CPUSMAX && paddlimit > 0) {
+						fetchtime(&allcpus[cux].lrun);
+						allcpus[cux].cyclequeue = 0;
+						numberofcpus++;
+						paddlimit--;
+					} else {
+						if(paddlimit < CPUSMAX) paddlimit++;
+					}
+				}
+				cux = 0;
+				glccq = gccq;
+				gccq = 0;
 			}
 			if(dbg && getc(stdin) == 'x') {
 				break;

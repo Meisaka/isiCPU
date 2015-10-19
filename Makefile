@@ -1,23 +1,23 @@
 CC=gcc -g 
-CFF=-O2 
+CFLAGS += -O2 
 
 SRCFILES=$(shell find . -name '*.c')
 THEFILES=$(basename $(SRCFILES))
 THEOBJ=$(addsuffix .o,$(THEFILES))
 
-.PHONY: All Clean
+.PHONY: all clean
 
-All: isicpu
+all: isicpu
 
-Clean:
+clean:
 	@rm -v isicpu
 	@rm -v ${THEOBJ}
 
-isicpu: ${THEOBJ}
+isicpu: ${THEOBJ} Makefile
 	@${CC} ${THEOBJ} -Wl,-as-needed -lrt -o isicpu
 	@if [ -x isicpu ] ; then echo "Build complete"; fi
 
-%.o: %.c
+%.o: %.c Makefile
 	@echo "$< > CC > $@ ($*)"
-	@${CC} -c $< -o $@
+	@${CC} ${CFLAGS} -c $< -o $@
 
