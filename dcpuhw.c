@@ -20,16 +20,6 @@ struct HWM_loadout {
 
 int HWM_GetSize(int idt)
 {
-	/*
-	switch(idt) {
-		case 1:
-			return Keyboard_SIZE();
-		case 3:
-			return Nya_LEM_SIZE();
-		default:
-			return 0;
-	}
-	*/
 #if DEBUG_DCPUHW == 1
 	fprintf(stderr,"[%s] GetSize()\n", devtable[idt].devid_name);
 #endif
@@ -113,7 +103,6 @@ int HWM_InitAll(DCPU *cpu)
 #if DEBUG_MEM == 1
 	fprintf(stderr, "hwinit: malloc %i\n", i);
 #endif
-	//HWM_Init(hws, blk, i);
 	return 0;
 }
 
@@ -135,7 +124,6 @@ int HWM_Query(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 	hws = (struct HWM_loadout*)cpu->hwloadout;
 	hwhw= (char*)cpu->hwdata;
 	knt = cpu->hwcount;
-	//for(i=0; i < knt; i++) {
 	// find hardware
 	if(hwnum < cpu->hwcount) {
 		knt = hws[hwnum].id;
@@ -147,21 +135,6 @@ int HWM_Query(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 	fprintf(stderr, "hwmhwq: %s %i\n", devtable[knt].devid_name, i);
 #endif
 	// call it in context
-	/*
-	switch(knt) {
-	case 1:
-		r = Keyboard_query(&hwhw[i], &lhwi);
-		break;
-	case 2:
-		r = Timer_query(&hwhw[i], &lhwi);
-		break;
-	case 3:
-		r = Nya_LEM_Query(&hwhw[i], &lhwi);
-		break;
-	default:
-		r = 0;
-		break;
-	}*/
 	if((devtable[knt].flags & 0x4001) == 0x4001) {
 		r = devtable[knt].OnHWQ(&hwhw[i], &lhwi);
 	} else if(devtable[knt].flags & 0x8000) {
@@ -201,17 +174,6 @@ int HWM_HWI(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 		return 0;
 	}
 	// call it in context
-	/*switch(knt) {
-	case 1:
-		r = Keyboard_HWI(&hwhw[i], &lhwi);
-		break;
-	case 3:
-		r = Nya_LEM_HWI(&hwhw[i], &lhwi);
-		break;
-	default:
-		r = 0;
-		break;
-	}*/
 	if((devtable[knt].flags & 0x4002) == 0x4002) {
 #if DEBUG_DCPUHW == 1
 		if(!(devtable[knt].flags & 0x0100))
@@ -245,21 +207,6 @@ int HWM_TickAll(DCPU *cpu, int fdnet, int msgin)
 		i = hws[k].id;
 		f = hws[k].rofs;
 		lhwi.hwnum = k;
-		/*
-		switch(i)
-		{
-		case 1:
-			if(Keyboard_Tick(&hwhw[f], &lhwi))
-			{
-				DCPU_interupt(cpu, lhwi.msg);
-			}
-			break;
-		case 3:
-			Nya_LEM_Tick(&hwhw[f], &lhwi);
-			break;
-		default:
-			break;
-		}*/
 		// Switched to a dynamic device table
 		lhwi.msg = msgin;
 		if((devtable[i].flags & 0x4004) == 0x4004) {

@@ -28,8 +28,6 @@ struct systemhwstate {
 	int delta_usec;
 };
 
-
-//int TickAllHW();
 int HWM_InitLoadout(DCPU *cpu, int devct);
 int HWM_FreeAll(DCPU *cpu);
 int HWM_DeviceAdd(DCPU *cpu, int did);

@@ -100,7 +100,6 @@ int makewaitserver()
 	if( setsockopt(fdsvr, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(int)) < 0) {
 		perror("set'opt");
 		close(fdsvr);
-		close(fdserver);
 		return -1;
 	}
 	if( bind(fdsvr, (struct sockaddr*)&lipn, sizeof(struct sockaddr_in)) < 0 ) {
@@ -279,19 +278,8 @@ int main(int argc, char**argv, char**envp)
 		return 0;
 	}
 
-	/*
-	mem[0] = 0x7c01;
-	mem[1] = 0x0032;
-	mem[2] = 0xa00d;
-	mem[3] = 0x7461;
-	mem[4] = 0x8b83;
-//	mem[5] = 0x7c07;
-//	mem[6] = 0xfff9;
-//	*/
-	
 	struct sigaction hnler;
 	hnler.sa_handler = sysfaulthdl;
-	//hnler.sa_mask = SA_NODEFER;
 	hnler.sa_flags = 0;
 
 
@@ -303,9 +291,7 @@ int main(int argc, char**argv, char**envp)
 		for(k = 0; k < 1000; k++) {
 			// Randomize RAM
 			rr += cpl[0].PC + cpl[0].R[0] + k;
-			//fprintf(stderr,"RS[%x]", rr);
 			srand(rr);
-			//srand(0x510fc318);
 			for(i = 0; i < 0x0000ffff; i++) {
 				mem[0][i] = rand() ^ (0x00ffff - rand());
 			}

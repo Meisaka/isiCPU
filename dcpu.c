@@ -88,7 +88,6 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
 		op &= 0x001f;
-		//fprintf(stderr,"[C %x %x %x - 0x%04x]\n", oa, ob, op, pr->PC);
 		if(!op) {
 			if(pr->MODE & DCPUMODE_SKIP) {
 				DCPU_skipref(oa, pr);
@@ -145,7 +144,6 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				break;
 				// 0x10 - 0x17 Hardware control
 			case SOP_HWN:
-				fprintf(stderr, "[HWN %x]\n", pr->hwcount);
 				DCPU_reref(oa, pr->hwcount, pr, ram);
 				break;
 			case SOP_HWQ:
@@ -153,9 +151,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				pr->cycl += 2;
 				if((pr->control & 1) && (pr->hwqaf) && (op = pr->hwqaf(pr->R, alu1.u, pr))) {
 					pr->cycl++;
-					fprintf(stderr, "[HWQA %x]\n", alu1.u);
 				} else {
-					fprintf(stderr, "[HWQN %x]\n", alu1.u);
 					pr->R[0] = 0;
 					pr->R[1] = 0;
 					pr->R[2] = 0;
@@ -169,7 +165,6 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				//pr->MODE |= DCPUMODE_EXTINT;
 				pr->cycl += 1;
 				if((pr->control & 2) && (pr->hwiaf) && (op = pr->hwiaf(pr->R, alu1.u, pr))) {
-					fprintf(stderr, "[HWI %x - %d]\n", alu1.u, op);
 					if(op > 0) {
 						pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
@@ -237,7 +232,6 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 			case OP_DVI: // DVI (R/W)
 				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
 				if(alu1.s) {
-					fprintf(stderr, "DVI %x]\n", alu1.u);
 					if(alu2.ss % alu1.s) {
 						pr->EX = ((alu2.s << 16) / alu1.s);
 					} else { pr->EX = 0; }
@@ -375,14 +369,12 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				fprintf(stderr, "DCPU: Invalid op: (%04x->%04x) %x\n", LPC, pr->PC, op);
 				break;
 			case OP_ADX: // ADX (R/W)
-				//fprintf(stderr, "DCPU: ADX op: %x\n", op);
 				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
 				alu2.u += alu1.u + pr->EX;
 				pr->EX = alu2.u >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_SBX: // SBX (R/W)
-				//fprintf(stderr, "DCPU: SBX op: %x\n", op);
 				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
 				alu2.u = alu2.u - alu1.u + pr->EX;
 				pr->EX = alu2.u >> 16;
