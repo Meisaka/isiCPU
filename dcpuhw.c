@@ -1,6 +1,6 @@
 
 #include "dcpuhw.h"
-
+#define DEBUG_DCPUHW 1
 extern struct stdevtable devtable[];
 
 int Timer_Query(void *hwd,struct systemhwstate * isi)
@@ -20,7 +20,7 @@ struct HWM_loadout {
 
 int HWM_GetSize(int idt)
 {
-#if DEBUG_DCPUHW == 1
+#if DEBUG_MEM == 1
 	fprintf(stderr,"[%s] GetSize()\n", devtable[idt].devid_name);
 #endif
 	if((devtable[idt].flags & 0x6000) == 0x6000) {
@@ -132,7 +132,7 @@ int HWM_Query(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 		return 0;
 	}
 #if DEBUG_DCPUHW == 1
-	fprintf(stderr, "hwmhwq: %s %i\n", devtable[knt].devid_name, i);
+	fprintf(stderr, "hwmhwq: %s %i %04x ", devtable[knt].devid_name, i, devtable[knt].flags);
 #endif
 	// call it in context
 	if((devtable[knt].flags & 0x4001) == 0x4001) {
@@ -143,8 +143,11 @@ int HWM_Query(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 		cpu->R[2] = devtable[knt].verid;
 		cpu->R[3] = devtable[knt].mfgid_lo;
 		cpu->R[4] = devtable[knt].mfgid_hi;
-		r = 0;
+		r = HWQ_SUCCESS;
 	}
+#if DEBUG_DCPUHW == 1
+	fprintf(stderr, ": %04x %04x %04x %04x %04x \n", cpu->R[0], cpu->R[1], cpu->R[2], cpu->R[3], cpu->R[4]);
+#endif
 	return r;
 }
 

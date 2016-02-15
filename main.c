@@ -166,13 +166,20 @@ void sysfaulthdl(int ssn) {
 	}
 }
 
-void showdiag_dcpu(const DCPU* cpu)
-{
-	fprintf(stderr,
+static const char * DIAG_L4 = 
 	" A    B    C    X    Y    Z   \n"
 	"%04x %04x %04x %04x %04x %04x \n"
 	" I    J    PC   SP   EX   IA  \n"
-	"%04x %04x %04x %04x %04x %04x \n",
+	"%04x %04x %04x %04x %04x %04x \n";
+static const char * DIAG_L2 = 
+	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA  \n"
+	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x \n";
+
+void showdiag_dcpu(const DCPU* cpu, int fmt)
+{
+	const char *diagt;
+	diagt = fmt ? DIAG_L2 : DIAG_L4;
+	fprintf(stderr, diagt,
 	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
 	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA);
 }
@@ -283,37 +290,7 @@ int main(int argc, char**argv, char**envp)
 	hnler.sa_flags = 0;
 
 
-	if(rqrun == 2) { // Test mode operation /////////////////////////
-		tcc = 0;
-		rr= time();
-		printf(" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA\n");
-		DCPU_init(&cpl[0], mem[0]);
-		for(k = 0; k < 1000; k++) {
-			// Randomize RAM
-			rr += cpl[0].PC + cpl[0].R[0] + k;
-			srand(rr);
-			for(i = 0; i < 0x0000ffff; i++) {
-				mem[0][i] = rand() ^ (0x00ffff - rand());
-			}
-			// Run the DCPU
-			tcc = 0;
-			while(tcc < 100000) {
-				//fprintf(stderr,"%04x: %04x [%04x]", cpl[0].PC, mem[cpl[0].PC]);
-				DCPU_run(&cpl[0],mem[0]);
-				if(cpl[0].cycl > 1000) {
-				tcc += cpl[0].cycl;
-				cpl[0].cycl = 0;
-				usleep(400);
-				}
-			}
-			// Debug info
-			fprintf(stderr, "%04x %04x %04x %04x %04x %04x %04x %04x ",cpl[0].R[0],cpl[0].R[1],cpl[0].R[2],cpl[0].R[3],cpl[0].R[4],cpl[0].R[5],cpl[0].R[6],cpl[0].R[7]);
-			fprintf(stderr, "%04x %04x %04x %04x ",cpl[0].PC,cpl[0].SP,cpl[0].EX,cpl[0].IA);
-			fprintf(stderr, "C: %d:%d (%d)\r", cpl[0].cycl, k);
-			tcc += cpl[0].cycl;
-			cpl[0].cycl = 0;
-		}
-	} else if(rqrun == 1) { // normal operation /////////////////////////
+	if(rqrun == 1) { // normal operation /////////////////////////
 	
 		for(cux = 0; cux < CPUSMAX; cux++) {
 			allcpus[cux].archtype = ARCH_DCPU;
@@ -371,19 +348,28 @@ int main(int argc, char**argv, char**envp)
 					ccq = 0;
 				}
 
-				if(ccq) {
-					for(j = 1000000000 / allcpus[cux].runrate; ccq && j; j--) { // limit calls
-						//TODO dynamic / multiple CPUs: call the right one.
-						// with memory and state.
+				if(dbg) {
+					if(lucycles) {
 						DCPU_run(allcpus[cux].cpustate,allcpus[cux].memptr);
-						//TODO some hardware may need to work at the same time
-						lucycles += ((DCPU*)allcpus[cux].cpustate)->cycl;
-						ccq -= ((DCPU*)allcpus[cux].cpustate)->cycl; // each op uses cycles, can be negative
 						((DCPU*)allcpus[cux].cpustate)->cycl = 0;
+						lucycles = 0;
+						showdiag_dcpu((DCPU*)allcpus[cux].cpustate, 1);
 					}
+				} else {
+					if(ccq) {
+						for(j = 1000000000 / allcpus[cux].runrate; ccq && j; j--) { // limit calls
+							//TODO dynamic / multiple CPUs: call the right one.
+							// with memory and state.
+							DCPU_run(allcpus[cux].cpustate,allcpus[cux].memptr);
+							//TODO some hardware may need to work at the same time
+							lucycles += ((DCPU*)allcpus[cux].cpustate)->cycl;
+							ccq -= ((DCPU*)allcpus[cux].cpustate)->cycl; // each op uses cycles, can be negative
+							((DCPU*)allcpus[cux].cpustate)->cycl = 0;
+						}
+					}
+					allcpus[cux].cyclequeue = ccq; // save when done
+					gccq += ccq;
 				}
-				allcpus[cux].cyclequeue = ccq; // save when done
-				gccq += ccq;
 
 				// If the queue has cycles left over then the server may be overloaded
 				// some CPUs should be slowed or moved to a different server/thread
@@ -391,69 +377,70 @@ int main(int argc, char**argv, char**envp)
 				HWM_TickAll(allcpus[cux].cpustate, fdserver,0);
 			}
 
-			if(!dbg) {
-				double clkdelta;
-				float clkrate;
-				fetchtime(&TUTime);
-				if(TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between debug output
-					showdiag_dcpu((DCPU*)allcpus[0].cpustate);
-					clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
-					clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
-					if(!lucpus) lucpus = 1;
-					clkrate = ((((double)lucycles) / clkdelta) * 0.001) / numberofcpus;
-					fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz  (%d)\r", clkdelta, numberofcpus, clkrate, gccq);
-					showdiag_up(4);
-					fetchtime(&LTUTime);
-					lucycles = 0;
-					lucpus = 0;
-				}
+			double clkdelta;
+			float clkrate;
+			fetchtime(&TUTime);
+			if(!dbg && TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
+				showdiag_dcpu((DCPU*)allcpus[0].cpustate, 0);
+				clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
+				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
+				if(!lucpus) lucpus = 1;
+				clkrate = ((((double)lucycles) / clkdelta) * 0.001) / numberofcpus;
+				fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz  (%d)\r", clkdelta, numberofcpus, clkrate, gccq);
+				showdiag_up(4);
+				fetchtime(&LTUTime);
+				lucycles = 0;
+				lucpus = 0;
+			}
 
-				ltv.tv_sec = 0;
-				ltv.tv_usec = 0;
-				FD_ZERO(&fds);
-				FD_SET(0, &fds); // stdin
-				i = select(1, &fds, NULL, NULL, &ltv);
+			ltv.tv_sec = 0;
+			ltv.tv_usec = 0;
+			FD_ZERO(&fds);
+			FD_SET(0, &fds); // stdin
+			i = select(1, &fds, NULL, NULL, &ltv);
+			if(i > 0) {
+				i = read(0, &cc, 1);
 				if(i > 0) {
-					i = read(0, &cc, 1);
-					if(i > 0) {
-						switch(cc) {
-						case 10:
-							break;
-						case 'l':
-							HWM_TickAll(&cpl[0], fdserver,0x3400);
-							break;
-						case 'x':
-							haltnow = 1;
-							break;
-						default:
-							break;
+					switch(cc) {
+					case 10:
+						lucycles = 1;
+						break;
+					case 'l':
+						HWM_TickAll(&cpl[0], fdserver,0x3400);
+						break;
+					case 'x':
+						haltnow = 1;
+						break;
+					default:
+						break;
+					}
+				}
+			}
+			if(!dbg) {
+				cux++;
+				if(cux > numberofcpus - 1) {
+					if(gccq) {
+						if(numberofcpus > CPUSMIN) {
+							if(gccq > glccq) numberofcpus--;
+						}
+						paddlimit = 0;
+					} else {
+						if(numberofcpus < CPUSMAX && paddlimit > 0) {
+							fetchtime(&allcpus[cux].lrun);
+							allcpus[cux].cyclequeue = 0;
+							numberofcpus++;
+							paddlimit--;
+						} else {
+							if(paddlimit < CPUSMAX) paddlimit++;
 						}
 					}
+					cux = 0;
+					glccq = gccq;
+					gccq = 0;
 				}
-			}
-			cux++;
-			if(cux > numberofcpus - 1) {
-				if(gccq) {
-					if(numberofcpus > CPUSMIN) {
-						if(gccq > glccq) numberofcpus--;
-					}
-					paddlimit = 0;
-				} else {
-					if(numberofcpus < CPUSMAX && paddlimit > 0) {
-						fetchtime(&allcpus[cux].lrun);
-						allcpus[cux].cyclequeue = 0;
-						numberofcpus++;
-						paddlimit--;
-					} else {
-						if(paddlimit < CPUSMAX) paddlimit++;
-					}
-				}
+			} else {
+				numberofcpus = 1;
 				cux = 0;
-				glccq = gccq;
-				gccq = 0;
-			}
-			if(dbg && getc(stdin) == 'x') {
-				break;
 			}
 			if(haltnow) {
 				break;
