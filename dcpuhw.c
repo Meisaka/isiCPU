@@ -1,6 +1,6 @@
 
 #include "dcpuhw.h"
-#define DEBUG_DCPUHW 1
+#define DEBUG_DCPUHW 0
 extern struct stdevtable devtable[];
 
 int Timer_Query(void *hwd,struct systemhwstate * isi)

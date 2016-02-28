@@ -1,6 +1,7 @@
 
 #include "dcpu.h"
 #include "opcode.h"
+#include "cputypes.h"
 #include <stdio.h>
 
 #define DCPUMODE_SKIP 1
@@ -52,9 +53,11 @@ int DCPU_interupt(DCPU* pr, uint16_t msg)
 	}
 }
 
-int DCPU_run(DCPU* pr, uint16_t * ram)
+int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 {
-	int cycl;
+	DCPU *pr = (DCPU*)l_cpu;
+	uint16_t *ram = (uint16_t*)l_ram;
+	size_t cycl = 0;
 	int op;
 	int oa;
 	int ob;
@@ -72,7 +75,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 	
 	if(pr->MODE == BURNING) {
 		pr->rcycl += 7;
-		pr->cycl += 3;
+		cycl += 3;
 	}
 
 	if((pr->MODE & DCPUMODE_EXTINT)) {
@@ -83,7 +86,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->rcycl++;
 	} else {
-		pr->rcycl++; pr->cycl++;
+		pr->rcycl++; cycl++;
 		op = ram[(uint16_t)(pr->PC++)];
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
@@ -103,7 +106,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				alu1.u = DCPU_deref(oa, pr, ram);
 				DCPU_reref(0x18, pr->PC, pr, ram);
 				pr->PC = alu1.u;
-				pr->cycl += 2;
+				cycl += 2;
 				break;
 			case 0x2: // UKN
 			case 0x3: // UKN
@@ -117,7 +120,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 			case SOP_INT:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				DCPU_interupt(pr, alu1.u);
-				pr->cycl += 3;
+				cycl += 3;
 				break;
 			case SOP_IAG:
 				DCPU_reref(oa, pr->IA, pr, ram);
@@ -131,7 +134,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				pr->R[0] = DCPU_deref(0x18, pr, ram);
 				pr->PC = DCPU_deref(0x18, pr, ram);
 				pr->MODE &= ~2;
-				pr->cycl += 2;
+				cycl += 2;
 				break;
 			case SOP_IAQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
@@ -140,7 +143,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				} else {
 					pr->MODE &= ~2;
 				}
-				pr->cycl++;
+				cycl++;
 				break;
 				// 0x10 - 0x17 Hardware control
 			case SOP_HWN:
@@ -148,31 +151,31 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				break;
 			case SOP_HWQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				pr->cycl += 2;
+				cycl += 2;
 				if((pr->control & 1) && (pr->hwqaf) && (op = pr->hwqaf(pr->R, alu1.u, pr))) {
-					pr->cycl++;
+					cycl++;
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
 					pr->R[2] = 0;
 					pr->R[3] = 0;
 					pr->R[4] = 0;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case SOP_HWI:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				//pr->MODE |= DCPUMODE_EXTINT;
-				pr->cycl += 1;
+				cycl += 1;
 				if((pr->control & 2) && (pr->hwiaf) && (op = pr->hwiaf(pr->R, alu1.u, pr))) {
 					if(op > 0) {
 						pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
 						return;
 					}
-					pr->cycl += 2;
+					cycl += 2;
 				} else {
-					pr->cycl += 2;
+					cycl += 2;
 				}
 				break;
 			default:
@@ -194,31 +197,31 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				break;
 			// Math functions:
 			case OP_ADD: // ADD (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
 				alu2.ui += alu1.u;
 				pr->EX = alu2.ui >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_SUB: // SUB (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
 				alu2.ui -= alu1.u;
 				pr->EX = alu2.ui >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MUL: // MUL (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
 				alu2.ui *= alu1.u;
 				pr->EX = alu2.ui >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MLI: // MLI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
 				alu2.s *= alu1.s;
 				pr->EX = alu2.ui >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_DIV: // DIV (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.u) {
 					alu2.ui = (alu2.ui << 16) / alu1.u;
 					pr->EX = alu2.u;
@@ -230,7 +233,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_DVI: // DVI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.s) {
 					if(alu2.ss % alu1.s) {
 						pr->EX = ((alu2.s << 16) / alu1.s);
@@ -243,7 +246,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MOD: // MOD (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.u) {
 					alu2.u %= alu1.u;
 				} else {
@@ -252,7 +255,7 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MDI: // MDI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.s) {
 					alu2.ss %= alu1.s;
 				} else {
@@ -296,69 +299,69 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				break;
 			// Conditional Operations:
 			case OP_IFB: // IFB (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u & alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 					// fail
 				}
 				break;
 			case OP_IFC: // IFC (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u & alu1.u) {
 					// fail
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				} else {
 				}
 				break;
 			case OP_IFE: // IFE (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u == alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case OP_IFN: // IFN (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u != alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case OP_IFG: // IFG (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u > alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case OP_IFA: // IFA (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.ss > alu1.s) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case OP_IFL: // IFL (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u < alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			case OP_IFU: // IFU (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); pr->cycl++;
+				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.ss < alu1.s) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
-					pr->cycl++;
+					cycl++;
 				}
 				break;
 			// Composite operations:
@@ -369,13 +372,13 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				fprintf(stderr, "DCPU: Invalid op: (%04x->%04x) %x\n", LPC, pr->PC, op);
 				break;
 			case OP_ADX: // ADX (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				alu2.u += alu1.u + pr->EX;
 				pr->EX = alu2.u >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_SBX: // SBX (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); pr->cycl+=2;
+				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				alu2.u = alu2.u - alu1.u + pr->EX;
 				pr->EX = alu2.u >> 16;
 				DCPU_reref(ob, alu2.u, pr, ram);
@@ -388,11 +391,11 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 				break;
 			case OP_STI: // STI (WO)
 				DCPU_reref(ob, alu1.u, pr, ram);
-				pr->R[6]++; pr->R[7]++; pr->cycl++;
+				pr->R[6]++; pr->R[7]++; cycl++;
 				break;
 			case OP_STD: // STD (WO)
 				DCPU_reref(ob, alu1.u, pr, ram);
-				pr->R[6]--; pr->R[7]--; pr->cycl++;
+				pr->R[6]--; pr->R[7]--; cycl++;
 				break;
 			default:
 				break;
@@ -411,6 +414,9 @@ int DCPU_run(DCPU* pr, uint16_t * ram)
 			pr->IQU[oa - 1] = pr->IQU[oa];
 		}
 	}
+	l_info->cycl += cycl + pr->cycl;
+	pr->cycl = 0;
+	return 0;
 }
 
 // Skip references

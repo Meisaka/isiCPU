@@ -95,11 +95,11 @@ int Nya_LEM_HWI(void * hwd, struct systemhwstate * isi)
 	if(!hwd) return -1;
 	dsp = (struct NyaLEM*)hwd;
 	// TODO - this
-	fprintf(stderr, "NYALEM: HWI %04x \n", isi->regs[0]);
+	//fprintf(stderr, "NYALEM: HWI %04x \n", isi->regs[0]);
 	switch(isi->regs[0]) {
 	case 0:
 		dsp->dspmem = isi->regs[1];
-		fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
+		//fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
 		Nya_LEM_voiddisp(dsp,isi);
 		break;
 	case 1: // Map Font
@@ -108,7 +108,7 @@ int Nya_LEM_HWI(void * hwd, struct systemhwstate * isi)
 		break;
 	case 2: // Map Palette
 		dsp->palmem = isi->regs[1];
-	fprintf(stderr, "NYALEM: Palette set to %04x \n", dsp->palmem);
+		fprintf(stderr, "NYALEM: Palette set to %04x \n", dsp->palmem);
 		break;
 	case 3: // Set border
 		dsp->border = isi->regs[1];

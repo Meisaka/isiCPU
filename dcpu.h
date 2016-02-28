@@ -1,6 +1,6 @@
 
-#ifndef _DCPU_H_
-#define _DCPU_H_
+#ifndef _ISI_DCPU_H_
+#define _ISI_DCPU_H_
 
 #include <stdint.h>
 #include <string.h>
@@ -41,9 +41,11 @@ typedef int (*DCPUext_interupt)(uint16_t*, uint16_t hwnum, DCPU *cpu);
 #define HUGE_FIREBALL (-3141592)
 #define BURNING (0xB19F14E)
 
+struct isiCPUInfo;
+
 void DCPU_init(DCPU* pr, uint16_t * ram);
 void DCPU_reset(DCPU* pr);
-int DCPU_run(DCPU* pr, uint16_t * ram);
+int DCPU_run(struct isiCPUInfo *, void * l_cpu, void * l_ram);
 int DCPU_interupt(DCPU* pr, uint16_t msg);
 int DCPU_sethwcount(DCPU* pr, uint16_t count);
 int DCPU_sethwqcallback(DCPU*, DCPUext_query);
