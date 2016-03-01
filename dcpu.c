@@ -10,6 +10,7 @@
 #define DCPUMODE_EXTINT 8
 
 static inline void DCPU_reref(int, uint16_t, DCPU*, uint16_t*);
+static inline void DCPU_rerefB(int, uint16_t, DCPU*, uint16_t*);
 static inline uint16_t DCPU_deref(int , DCPU* , uint16_t * );
 static inline uint16_t DCPU_derefB(int , DCPU* , uint16_t * );
 static int DCPU_setonfire(DCPU * );
@@ -53,6 +54,37 @@ int DCPU_interupt(DCPU* pr, uint16_t msg)
 	}
 }
 
+static const int DCPU_cycles1[] =
+{
+	0, 1, 2, 2, 2, 2, 3, 3,
+	3, 3, 1, 1, 1, 1, 1, 1,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	3, 3, 3, 3, 2, 2, 2, 2
+};
+
+static const int DCPU_cycles2[] =
+{
+	0, 3, 0, 0, 0, 0, 0, 0,
+	4, 1, 1, 3, 2, 0, 0, 0,
+	2, 4, 4, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const int DCPU_dtbl[] =
+{
+	0, 3, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	0, 0, 1, 1, 0, 0, 3, 3
+};
+static const int DCPU_dwtbl[] =
+{
+	0, 0, 1, 1, 1, 1, 2, 2,
+	3, 3, 3, 3, 3, 2, 2, 1,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 1, 1, 0, 0, 0, 0
+};
+
 int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 {
 	DCPU *pr = (DCPU*)l_cpu;
@@ -63,14 +95,13 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 	int ob;
 	union {
 		uint16_t u;
-		short s;
+		int16_t s;
 	} alu1;
 	union {
-		unsigned short u;
-		unsigned int ui;
-		int s;
-		short ss;
-		short sa[2];
+		uint16_t u;
+		uint32_t ui;
+		int32_t si;
+		int16_t s;
 	} alu2;
 	
 	if(pr->MODE == BURNING) {
@@ -86,7 +117,7 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->rcycl++;
 	} else {
-		pr->rcycl++; cycl++;
+		pr->rcycl++;
 		op = ram[(uint16_t)(pr->PC++)];
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
@@ -95,8 +126,11 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 			if(pr->MODE & DCPUMODE_SKIP) {
 				DCPU_skipref(oa, pr);
 				pr->MODE ^= DCPUMODE_SKIP;
+				l_info->cycl += 1 + pr->cycl;
+				pr->cycl = 0;
 				return 0;
 			}
+			cycl += DCPU_cycles2[ob];
 			// Special opcodes
 			switch(ob) {
 			case 0:
@@ -106,7 +140,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				alu1.u = DCPU_deref(oa, pr, ram);
 				DCPU_reref(0x18, pr->PC, pr, ram);
 				pr->PC = alu1.u;
-				cycl += 2;
 				break;
 			case 0x2: // UKN
 			case 0x3: // UKN
@@ -120,7 +153,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 			case SOP_INT:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				DCPU_interupt(pr, alu1.u);
-				cycl += 3;
 				break;
 			case SOP_IAG:
 				DCPU_reref(oa, pr->IA, pr, ram);
@@ -134,7 +166,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				pr->R[0] = DCPU_deref(0x18, pr, ram);
 				pr->PC = DCPU_deref(0x18, pr, ram);
 				pr->MODE &= ~2;
-				cycl += 2;
 				break;
 			case SOP_IAQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
@@ -143,7 +174,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				} else {
 					pr->MODE &= ~2;
 				}
-				cycl++;
 				break;
 				// 0x10 - 0x17 Hardware control
 			case SOP_HWN:
@@ -151,31 +181,24 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				break;
 			case SOP_HWQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				cycl += 2;
 				if((pr->control & 1) && (pr->hwqaf) && (op = pr->hwqaf(pr->R, alu1.u, pr))) {
-					cycl++;
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
 					pr->R[2] = 0;
 					pr->R[3] = 0;
 					pr->R[4] = 0;
-					cycl++;
 				}
 				break;
 			case SOP_HWI:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				//pr->MODE |= DCPUMODE_EXTINT;
-				cycl += 1;
 				if((pr->control & 2) && (pr->hwiaf) && (op = pr->hwiaf(pr->R, alu1.u, pr))) {
 					if(op > 0) {
 						pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
 						return;
 					}
-					cycl += 2;
-				} else {
-					cycl += 2;
 				}
 				break;
 			default:
@@ -188,118 +211,107 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				if(op < OPN_IFMIN || op > OPN_IFMAX) {
 					pr->MODE ^= DCPUMODE_SKIP;
 				}
+				l_info->cycl += 1 + pr->cycl;
+				pr->cycl = 0;
 				return 0;
 			}
 			alu1.u = DCPU_deref(oa, pr, ram);
+			switch(DCPU_dtbl[op]) {
+			case 1:
+				alu2.ui = DCPU_derefB(ob, pr, ram) | (pr->EX << 16);
+				break;
+			case 2:
+				alu2.u = DCPU_deref(ob, pr, ram);
+				break;
+			case 3:
+				DCPU_reref(ob, alu1.u, pr, ram);
+				break;
+			default:
+				break;
+			}
+			cycl += DCPU_cycles1[op];
 			switch(op) {
 			case OP_SET: // SET (WO)
-				DCPU_reref(ob, alu1.u, pr, ram);
 				break;
 			// Math functions:
 			case OP_ADD: // ADD (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
-				alu2.ui += alu1.u;
-				pr->EX = alu2.ui >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u + alu1.u;
 				break;
 			case OP_SUB: // SUB (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
-				alu2.ui -= alu1.u;
-				pr->EX = alu2.ui >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u - alu1.u;
 				break;
 			case OP_MUL: // MUL (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
-				alu2.ui *= alu1.u;
-				pr->EX = alu2.ui >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u * alu1.u;
 				break;
 			case OP_MLI: // MLI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl++;
-				alu2.s *= alu1.s;
-				pr->EX = alu2.ui >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.si = alu2.s * alu1.s;
 				break;
 			case OP_DIV: // DIV (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.u) {
 					alu2.ui = (alu2.ui << 16) / alu1.u;
-					pr->EX = alu2.u;
-					alu2.ui >>= 16;
 				} else {
-					alu2.u = 0;
-					pr->EX = 0;
+					alu2.ui = 0;
 				}
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_DVI: // DVI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
+				alu2.ui = alu2.u << 16;
+				fprintf(stderr, "DVI %04x / %04x\n", alu2.u, alu1.u);
 				if(alu1.s) {
-					if(alu2.ss % alu1.s) {
-						pr->EX = ((alu2.s << 16) / alu1.s);
-					} else { pr->EX = 0; }
-					alu2.s = alu2.ss / alu1.s;
+					//if(alu2.s % alu1.s) {
+					//	pr->EX = ((alu2.s << 16) / alu1.s);
+					//} else { pr->EX = 0; }
+					if(alu2.si < 0 ^ alu1.s < 0) {
+						if(alu2.si < 0) {
+							alu2.si = -alu2.si;
+						} else if(alu1.s < 0) {
+							alu1.s = -alu1.s;
+						}
+						alu2.ui = alu2.ui / alu1.u;
+						alu2.ui = -alu2.ui;
+					} else {
+						alu2.si = alu2.si / alu1.s;
+					}
 				} else {
-					alu2.u = 0;
-					pr->EX = 0;
+					alu2.ui = 0;
 				}
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MOD: // MOD (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.u) {
-					alu2.u %= alu1.u;
+					alu2.u = alu2.u % alu1.u;
 				} else {
 					alu2.u = 0;
 				}
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_MDI: // MDI (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
 				if(alu1.s) {
-					alu2.ss %= alu1.s;
+					alu2.s = alu2.s % alu1.s;
 				} else {
 					alu2.u = 0;
 				}
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			// Bits operations:
 			case OP_AND: // AND (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram);
 				alu2.u &= alu1.u;
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_BOR: // BOR (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram);
 				alu2.u |= alu1.u;
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_XOR: // XOR (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram);
 				alu2.u ^= alu1.u;
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_SHR: // SHR (R/W)
-				alu2.ui = DCPU_derefB(ob, pr, ram);
-				pr->EX = alu2.ui << (16 - alu1.u);
+				alu2.ui = alu2.u << 16;
 				alu2.ui >>= alu1.u;
-				DCPU_reref(ob, alu2.u, pr, ram);
 				break;
 			case OP_ASR: // ASR (R/W)
-				alu2.s = (short)DCPU_derefB(ob, pr, ram);
-				pr->EX = (alu2.ui << (16-alu1.u));
-				alu2.ui >>= alu1.u;
-				DCPU_reref(ob, (uint16_t)(alu2.u), pr, ram);
+				alu2.ui = alu2.u << 16;
+				alu2.si >>= alu1.u;
 				break;
 			case OP_SHL: // SHL (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram);
-				alu2.ui <<= alu1.u;
-				pr->EX = (uint16_t)(alu2.ui >> 16);
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u << alu1.u;
 				break;
 			// Conditional Operations:
 			case OP_IFB: // IFB (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u & alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
@@ -308,7 +320,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFC: // IFC (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u & alu1.u) {
 					// fail
 					pr->MODE |= DCPUMODE_SKIP;
@@ -317,7 +328,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFE: // IFE (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u == alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
@@ -325,7 +335,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFN: // IFN (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u != alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
@@ -333,7 +342,6 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFG: // IFG (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u > alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
@@ -341,15 +349,13 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFA: // IFA (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
-				if(alu2.ss > alu1.s) {
+				if(alu2.s > alu1.s) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
 					cycl++;
 				}
 				break;
 			case OP_IFL: // IFL (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
 				if(alu2.u < alu1.u) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
@@ -357,8 +363,7 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				}
 				break;
 			case OP_IFU: // IFU (RO)
-				alu2.u = DCPU_deref(ob, pr, ram); cycl++;
-				if(alu2.ss < alu1.s) {
+				if(alu2.s < alu1.s) {
 				} else {
 					pr->MODE |= DCPUMODE_SKIP;
 					cycl++;
@@ -372,16 +377,10 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				fprintf(stderr, "DCPU: Invalid op: (%04x->%04x) %x\n", LPC, pr->PC, op);
 				break;
 			case OP_ADX: // ADX (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
-				alu2.u += alu1.u + pr->EX;
-				pr->EX = alu2.u >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u + alu1.u + pr->EX;
 				break;
 			case OP_SBX: // SBX (R/W)
-				alu2.u = DCPU_derefB(ob, pr, ram); cycl+=2;
-				alu2.u = alu2.u - alu1.u + pr->EX;
-				pr->EX = alu2.u >> 16;
-				DCPU_reref(ob, alu2.u, pr, ram);
+				alu2.ui = alu2.u - alu1.u + pr->EX;
 				break;
 			case 0x1C: // UKN
 				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
@@ -390,14 +389,25 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
 				break;
 			case OP_STI: // STI (WO)
-				DCPU_reref(ob, alu1.u, pr, ram);
-				pr->R[6]++; pr->R[7]++; cycl++;
+				pr->R[6]++; pr->R[7]++;
 				break;
 			case OP_STD: // STD (WO)
-				DCPU_reref(ob, alu1.u, pr, ram);
-				pr->R[6]--; pr->R[7]--; cycl++;
+				pr->R[6]--; pr->R[7]--;
 				break;
 			default:
+				break;
+			}
+			switch(DCPU_dwtbl[op]) {
+			case 1:
+				DCPU_rerefB(ob, alu2.u, pr, ram);
+				pr->EX = alu2.ui >> 16;
+				break;
+			case 2:
+				DCPU_rerefB(ob, alu2.ui >> 16, pr, ram);
+				pr->EX = alu2.u;
+				break;
+			case 3:
+				DCPU_rerefB(ob, alu2.u, pr, ram);
 				break;
 			}
 		}
@@ -489,6 +499,68 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 	}
 }
 
+// re-Write referenced B operand
+static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
+{
+	if(p < 0x18) {
+		if(p & 0x0010) {
+			pr->rcycl+=2; pr->cycl++;
+			ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ] = v;
+			return;
+		} else {
+			if(p & 0x8) {
+				pr->rcycl++;
+				ram[ pr->R[p & 0x7] ] = v;
+				return;
+			} else {
+				pr->R[p & 0x7] = v;
+				return;
+			}
+		}
+	} else {
+		if(p < 0x20) {
+			switch(p) {
+			case 0x18:
+				pr->rcycl++;
+				ram[pr->SP] = v;
+				return;
+			case 0x19:
+				pr->rcycl++;
+				ram[pr->SP] = v;
+				return;
+			case 0x1a:
+				pr->rcycl+=2; pr->cycl++;
+				ram[(uint16_t)(pr->SP + ram[pr->PC++]) ] = v;
+				return;
+			case 0x1b:
+				pr->SP = v;
+				return;
+			case 0x1c:
+				pr->PC = v;
+				return;
+			case 0x1d:
+				pr->EX = v;
+				return;
+			case 0x1e:
+				pr->rcycl += 2; pr->cycl++;
+				ram[ ram[pr->PC++] ] = v;
+				return;
+			case 0x1f:
+				pr->rcycl++; pr->cycl++;
+				// READ: ram[ pr->PC ];
+				pr->PC++;
+				// Fail silently
+				return;
+			default:
+				fprintf(stderr, "DCPU: Bad write: %x\n", p);
+				// Should never actually happen
+				return ;
+			}
+		}
+	}
+}
+
+
 // Dereference an A operand for ops
 static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
 {
@@ -559,7 +631,7 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
 			switch(p) {
 			case 0x18:
 				pr->rcycl++;
-				return ram[pr->SP];
+				return ram[--(pr->SP)];
 			case 0x19:
 				pr->rcycl++;
 				return ram[pr->SP];
