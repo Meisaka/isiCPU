@@ -255,24 +255,21 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				break;
 			case OP_DVI: // DVI (R/W)
 				alu2.ui = alu2.u << 16;
-				fprintf(stderr, "DVI %04x / %04x\n", alu2.u, alu1.u);
-				if(alu1.s) {
-					//if(alu2.s % alu1.s) {
-					//	pr->EX = ((alu2.s << 16) / alu1.s);
-					//} else { pr->EX = 0; }
-					if(alu2.si < 0 ^ alu1.s < 0) {
-						if(alu2.si < 0) {
-							alu2.si = -alu2.si;
-						} else if(alu1.s < 0) {
-							alu1.s = -alu1.s;
-						}
-						alu2.ui = alu2.ui / alu1.u;
-						alu2.ui = -alu2.ui;
-					} else {
-						alu2.si = alu2.si / alu1.s;
+				{
+					int sgn = alu2.si < 0 ^ alu1.s < 0;
+					if(alu2.si < 0) {
+						alu2.si = -alu2.si;
 					}
-				} else {
-					alu2.ui = 0;
+					if(alu1.s < 0) {
+						alu1.s = -alu1.s;
+					}
+					if(!alu1.u) {
+						alu2.ui = 0;
+					} else {
+						alu2.ui = alu2.ui / alu1.u;
+						if(sgn)
+							alu2.ui = -alu2.ui;
+					}
 				}
 				break;
 			case OP_MOD: // MOD (R/W)
