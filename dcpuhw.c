@@ -69,6 +69,7 @@ int HWM_FreeAll(DCPU *cpu)
 	}
 	cpu->hwdata = NULL;
 	cpu->hwloadout = NULL;
+	return 0;
 }
 
 int HWM_DeviceAdd(DCPU *cpu, int did)
@@ -192,7 +193,7 @@ int HWM_HWI(uint16_t* reg, uint16_t hwnum, DCPU *cpu)
 	return r;
 }
 
-int HWM_TickAll(DCPU *cpu, int fdnet, int msgin)
+int HWM_TickAll(DCPU *cpu, struct timespec crun, int fdnet, int msgin)
 {
 	int i,k, f;
 	struct HWM_loadout *hws;
@@ -204,6 +205,8 @@ int HWM_TickAll(DCPU *cpu, int fdnet, int msgin)
 	lhwi.mem = cpu->memptr;
 	lhwi.regs = cpu->R;
 	lhwi.msg = 0;
+	lhwi.crun.tv_sec = crun.tv_sec;
+	lhwi.crun.tv_nsec = crun.tv_nsec;
 	hws = (struct HWM_loadout*)cpu->hwloadout;
 	hwhw= (char*)cpu->hwdata;
 	for(k = 0; k < cpu->hwcount; k++) {

@@ -1,33 +1,32 @@
 
-#include "asm.h"
-#include "dcpu.h"
-#include "dcpuhw.h"
-#include "cputypes.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <sys/types.h>
+#include <unistd.h>
+#include <time.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <signal.h>
+#include "asm.h"
+#include "dcpu.h"
+#include "dcpuhw.h"
+#include "cputypes.h"
 #define CLOCK_MONOTONIC_RAW             4   /* since 2.6.28 */
 #define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
 
-static struct timespec LUTime;
-static struct timespec CUTime;
-static struct timespec DeltaTime;
 static struct timespec TUTime;
 static struct timespec LTUTime;
-static int fdserver;
-static int haltnow;
+static int fdserver = 0;
+static int haltnow = 0;
 
-static int cpucount;
+static int cpucount = 0;
 
-static const int listenportnumber = 58704;
+static int listenportnumber = 58704;
+
+static const int quantum = 1000000000 / 10000; // ns
 
 enum {
 	CPUSMAX = 800,
@@ -41,7 +40,7 @@ static CPUSlot allcpus[CPUSMAX];
 DCPU cpl[CPUSMAX];
 short mem[CPUSMAX][0x10000];
 
-static const char * const gsc_usage = 
+static const char * const gsc_usage =
 "Usage:\n%s [-Desr] [-c <asmfile>] [-B <binfile>]\n\n"
 "Options:\n -D  Enable debug\n -e  Assume <binfile> is little-endian\n"
 " -s  Enable server and wait for connection before\n"
@@ -147,8 +146,8 @@ int loadbinfile(const char* path, int endian, unsigned char * mem)
 	if(fd < 0) { perror("open"); return -5; }
 
 	f = 0;
-	while(i = read(fd, bf, 2) > 0) {
-		if(f < 0x10000) {
+	while((i = read(fd, bf, 2)) > 0) {
+		if(f < 0x20000) {
 			if(endian) {
 			mem[f++] = bf[1];
 			mem[f++] = bf[0];
@@ -169,17 +168,18 @@ void sysfaulthdl(int ssn) {
 	}
 }
 
-static const char * DIAG_L4 = 
+static const char * DIAG_L4 =
 	" A    B    C    X    Y    Z   \n"
 	"%04x %04x %04x %04x %04x %04x \n"
 	" I    J    PC   SP   EX   IA  \n"
 	"%04x %04x %04x %04x %04x %04x \n";
-static const char * DIAG_L2 = 
+static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA  \n"
 	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x \n";
 
-void showdiag_dcpu(const DCPU* cpu, int fmt)
+void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
 {
+	const DCPU * cpu = (const DCPU*)info->cpustate;
 	const char *diagt;
 	diagt = fmt ? DIAG_L2 : DIAG_L4;
 	fprintf(stderr, diagt,
@@ -196,6 +196,18 @@ void fetchtime(struct timespec * t)
 	clock_gettime(CLOCK_MONOTONIC_RAW, t);
 }
 
+void isi_addtime(struct timespec * t, size_t nsec) {
+	size_t asec, ansec;
+	asec  = nsec / 1000000000;
+	ansec = nsec % 1000000000;
+	t->tv_nsec += ansec;
+	while(t->tv_nsec > 1000000000) {
+		t->tv_nsec -= 1000000000;
+		asec++;
+	}
+	t->tv_sec += asec;
+}
+
 int main(int argc, char**argv, char**envp)
 {
 
@@ -205,11 +217,9 @@ int main(int argc, char**argv, char**envp)
 	int asmlen;
 	int rqrun;
 	int endian;
-	int avcycl;
 	int ssvr;
 	int cux;
-	long nsec_err;
-	long long tcc;
+	long long tcc = 0;
 	uintptr_t gccq = 0;
 	uintptr_t glccq = 0;
 	uintptr_t lucycles = 0;
@@ -220,17 +230,17 @@ int main(int argc, char**argv, char**envp)
 	struct timeval ltv;
 	fd_set fds;
 	char cc;
+	char ccv[10];
 
 	dbg = 0;
 	rqrun = 0;
-	avcycl = 0;
 	endian = 0;
 	ssvr = 0;
 	haltnow= 0;
 	binf = NULL;
 	memset(mem, 0, sizeof(short)*0x10000);
 	memset(allcpus, 0, sizeof(allcpus));
-	int i,k, j , rr;
+	int i,k;
 
 	if( argc > 1 ) {
 		for(i = 1; i < argc; i++) {
@@ -263,6 +273,17 @@ int main(int argc, char**argv, char**envp)
 						softcpumax = CPUSMAX;
 						softcpumin = CPUSMIN;
 						numberofcpus = CPUSMIN;
+						break;
+					case 'p':
+						k = -1;
+						if(i+1 < argc) {
+							listenportnumber = atoi(argv[i+1]);
+							if(listenportnumber < 1 || listenportnumber > 65535) {
+								fprintf(stderr, "Invalid port number %d\n", listenportnumber);
+								return 1;
+							}
+							i++;
+						}
 						break;
 					case 'e':
 						endian = 2;
@@ -298,37 +319,40 @@ int main(int argc, char**argv, char**envp)
 
 
 	if(rqrun == 1) { // normal operation /////////////////////////
-	
+
 		for(cux = 0; cux < softcpumax; cux++) {
 			allcpus[cux].archtype = ARCH_DCPU;
 			allcpus[cux].memsize = 0x10000;
 			allcpus[cux].cpustate = &cpl[cux];
 			allcpus[cux].memptr = mem[cux];
 			allcpus[cux].runrate = 10000; // Nano seconds per cycle (100kHz)
+			allcpus[cux].rate = (quantum / allcpus[cux].runrate); // cycles per quantum
 			allcpus[cux].RunCycles = DCPU_run;
-			allcpus[cux].nse = 0;
+			allcpus[cux].ctl = dbg ? ISICTL_DEBUG : 0;
 			allcpus[cux].cyclequeue = 0; // Should always be reset
 			DCPU_init(allcpus[cux].cpustate, allcpus[cux].memptr);
-			HWM_InitLoadout(allcpus[cux].cpustate, 3);
+			HWM_InitLoadout(allcpus[cux].cpustate, 5);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 2);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 0);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 1);
+			HWM_DeviceAdd(allcpus[cux].cpustate, 4);
+			HWM_DeviceAdd(allcpus[cux].cpustate, 5);
 			HWM_InitAll(allcpus[cux].cpustate);
 			DCPU_sethwqcallback(allcpus[cux].cpustate, HWM_Query);
 			DCPU_sethwicallback(allcpus[cux].cpustate, HWM_HWI);
 			if(binf) {
-				loadbinfile(binf, endian, (char*)allcpus[cux].memptr);
+				loadbinfile(binf, endian, (unsigned char*)allcpus[cux].memptr);
 			}
 		}
 		if(ssvr) {
 			makewaitserver();
 			sleep(3);
 		}
-		
+
 		sigaction(SIGINT, &hnler, NULL);
 
 		for(cux = 0; cux < numberofcpus; cux++) {
-			fetchtime(&allcpus[cux].lrun);
+			fetchtime(&allcpus[cux].nrun);
 		}
 		fetchtime(&LTUTime);
 		lucycles = 0; // how many cycles ran (debugging)
@@ -338,81 +362,54 @@ int main(int argc, char**argv, char**envp)
 			ccpu = allcpus + cux;
 
 			if(((DCPU*)ccpu->cpustate)->MODE != BURNING) {
-				struct timespec *LRun = &ccpu->lrun;
-				LUTime.tv_sec = LRun->tv_sec;
-				LUTime.tv_nsec = LRun->tv_nsec;
-				fetchtime(LRun);
-				DeltaTime.tv_sec = LRun->tv_sec - LUTime.tv_sec;
-				DeltaTime.tv_nsec = LRun->tv_nsec - LUTime.tv_nsec;
-				DeltaTime.tv_nsec += ccpu->nse;
-				if(DeltaTime.tv_sec) {
-					DeltaTime.tv_nsec += 1000000000;
-				}
-				nsec_err = 0;
-				uintptr_t ccq = 0;
-				if(ccpu->runrate > 0) {
-					ccq = (DeltaTime.tv_nsec / ccpu->runrate);
-					ccpu->nse = (DeltaTime.tv_nsec % ccpu->runrate);
-					ccq += ccpu->cyclequeue;
-					if(ccpu->cyclewait) {
-						if(ccpu->cyclewait < ccq) {
-							ccq -= ccpu->cyclewait;
-							ccpu->cyclewait = 0;
-						} else {
-							ccpu->cyclewait -= ccq;
-							ccq = 0;
-						}
-					}
-				} else {
-					ccq = 0;
-				}
+				struct timespec CRun;
 
-				if(dbg) {
+				if(ccpu->ctl & ISICTL_DEBUG) {
 					if(lucycles) {
-						ccpu->RunCycles(ccpu, ccpu->cpustate, ccpu->memptr);
+						ccpu->RunCycles(ccpu, CRun);
 						ccpu->cycl = 0;
 						lucycles = 0;
-						showdiag_dcpu((DCPU*)ccpu->cpustate, 1);
+						showdiag_dcpu(ccpu, 1);
 					}
 				} else {
-					if(ccq) {
-						for(j = 10000000 / ccpu->runrate; ccq && j; j--) { // limit calls
-							ccpu->RunCycles(ccpu, ccpu->cpustate, ccpu->memptr);
-							//TODO some hardware may need to work at the same time
-							lucycles += ccpu->cycl;
-							if(ccq < ccpu->cycl) { // used too many
-								ccpu->cyclewait += (ccpu->cycl - ccq);
-								ccq = 0;
-							} else {
-								ccq -= ccpu->cycl; // each op uses cycles
-							}
-							ccpu->cycl = 0;
-						}
+					int ccq = 0;
+					fetchtime(&CRun);
+					while((ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
+						isi_addtime(&ccpu->nrun, quantum);
+						ccpu->RunCycles(ccpu, CRun);
+						//TODO some hardware may need to work at the same time
+						lucycles += ccpu->cycl;
+						tcc += ccpu->cyclequeue;
+						ccpu->cyclequeue = 0;
+						ccpu->cycl = 0;
+						fetchtime(&CRun);
+						gccq++;
 					}
-					ccpu->cyclequeue = ccq; // save when done
-					gccq += ccq;
 				}
+				fetchtime(&CRun);
 
 				// If the queue has cycles left over then the server may be overloaded
 				// some CPUs should be slowed or moved to a different server/thread
 
-				HWM_TickAll(ccpu->cpustate, cux == 0 ? fdserver : 0, 0);
+				HWM_TickAll(ccpu->cpustate, CRun, cux == 0 ? fdserver : 0, 0);
 			}
 
 			double clkdelta;
 			float clkrate;
 			fetchtime(&TUTime);
 			if(!dbg && TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
-				showdiag_dcpu((DCPU*)allcpus[0].cpustate, 0);
+				showdiag_dcpu(&allcpus[0], 0);
 				clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
 				clkrate = ((((double)lucycles) / clkdelta) * 0.001) / numberofcpus;
-				fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz  (%d)\r", clkdelta, numberofcpus, clkrate, gccq);
+				fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz   \r",
+						clkdelta, numberofcpus, clkrate);
 				showdiag_up(4);
 				fetchtime(&LTUTime);
 				lucycles = 0;
 				lucpus = 0;
+				gccq = 0;
 			}
 
 			ltv.tv_sec = 0;
@@ -423,12 +420,36 @@ int main(int argc, char**argv, char**envp)
 			if(i > 0) {
 				i = read(0, &cc, 1);
 				if(i > 0) {
+					struct timespec CRun;
+					fetchtime(&CRun);
 					switch(cc) {
 					case 10:
 						lucycles = 1;
+						allcpus[0].cyclequeue = 1;
+						break;
+					case 'r':
+						i = read(0, ccv, 5);
+						if(i < 5) break;
+						{
+							uint32_t t = 0;
+							uint32_t ti = 0;
+							int k;
+							for(k = 0; k < 4; k++) {
+								ti = ccv[k] - '0';
+								if(ti > 9) {
+									ti -= ('A'-'0'-10);
+								}
+								if(ti > 15) {
+									ti -= 'a' - 'A';
+								}
+								t = (t << 4) | (ti & 15);
+							}
+							ti = mem[0][t];
+							fprintf(stderr, "READ %04x:%04x\n", t, ti);
+						}
 						break;
 					case 'l':
-						HWM_TickAll(&cpl[0], fdserver,0x3400);
+						HWM_TickAll(&cpl[0], CRun, fdserver,0x3400);
 						break;
 					case 'x':
 						haltnow = 1;
@@ -448,7 +469,7 @@ int main(int argc, char**argv, char**envp)
 						paddlimit = 0;
 					} else {
 						if(numberofcpus < softcpumax && paddlimit > 0) {
-							fetchtime(&ccpu->lrun);
+							fetchtime(&ccpu->nrun);
 							ccpu->cyclequeue = 0;
 							numberofcpus++;
 							paddlimit--;
@@ -458,7 +479,6 @@ int main(int argc, char**argv, char**envp)
 					}
 					cux = 0;
 					glccq = gccq;
-					gccq = 0;
 				}
 			} else {
 				numberofcpus = 1;

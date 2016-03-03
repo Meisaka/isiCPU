@@ -47,7 +47,6 @@ int Keyboard_HWI(void *hwd, struct systemhwstate *isi)
 		break;
 	case 3: // Set interupt
 		kyb->imsg = isi->regs[1];
-		fprintf(stderr, "KEYB: IntOn %04x \n", isi->regs[1]);
 		break;
 	default:
 		break;
@@ -59,7 +58,7 @@ int Keyboard_Tick(void *hwd, struct systemhwstate *isi)
 {
 	struct timeval ltv;
 	fd_set fds;
-	int i,k;
+	int i;
 	unsigned char tbf[4];
 	struct LKBD* kyb;
 	kyb = (struct LKBD*)hwd;

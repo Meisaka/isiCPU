@@ -1,5 +1,5 @@
 CC=gcc -g 
-CFLAGS += -O2 
+CFLAGS += -O2 -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
 
 SRCFILES=$(shell find . -name '*.c')
 THEFILES=$(basename $(SRCFILES))

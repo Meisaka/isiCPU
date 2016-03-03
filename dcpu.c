@@ -85,10 +85,10 @@ static const int DCPU_dwtbl[] =
 	0, 0, 1, 1, 0, 0, 0, 0
 };
 
-int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
+int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 {
-	DCPU *pr = (DCPU*)l_cpu;
-	uint16_t *ram = (uint16_t*)l_ram;
+	DCPU *pr = (DCPU*)l_info->cpustate;
+	uint16_t *ram = (uint16_t*)l_info->memptr;
 	size_t cycl = 0;
 	int op;
 	int oa;
@@ -104,6 +104,23 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 		int16_t s;
 	} alu2;
 	
+	uintptr_t ccq = 0;
+	if(l_info->ctl & ISICTL_DEBUG) {
+		ccq = l_info->cyclequeue ? 1 : 0;
+	} else {
+		ccq = l_info->rate;
+		if(l_info->cyclewait) {
+			if(l_info->cyclewait < ccq) {
+				ccq -= l_info->cyclewait;
+				l_info->cyclewait = 0;
+			} else {
+				l_info->cyclewait -= ccq;
+				ccq = 0;
+			}
+		}
+	}
+	while(ccq) {
+
 	if(pr->MODE == BURNING) {
 		pr->rcycl += 7;
 		cycl += 3;
@@ -126,9 +143,8 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 			if(pr->MODE & DCPUMODE_SKIP) {
 				DCPU_skipref(oa, pr);
 				pr->MODE ^= DCPUMODE_SKIP;
-				l_info->cycl += 1 + pr->cycl;
-				pr->cycl = 0;
-				return 0;
+				cycl ++;
+				goto ecpu;
 			}
 			cycl += DCPU_cycles2[ob];
 			// Special opcodes
@@ -197,7 +213,7 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 					if(op > 0) {
 						pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
-						return;
+						goto ecpu;
 					}
 				}
 				break;
@@ -211,9 +227,8 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 				if(op < OPN_IFMIN || op > OPN_IFMAX) {
 					pr->MODE ^= DCPUMODE_SKIP;
 				}
-				l_info->cycl += 1 + pr->cycl;
-				pr->cycl = 0;
-				return 0;
+				cycl ++;
+				goto ecpu;
 			}
 			alu1.u = DCPU_deref(oa, pr, ram);
 			switch(DCPU_dtbl[op]) {
@@ -256,7 +271,7 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 			case OP_DVI: // DVI (R/W)
 				alu2.ui = alu2.u << 16;
 				{
-					int sgn = alu2.si < 0 ^ alu1.s < 0;
+					int sgn = (alu2.si < 0) ^ (alu1.s < 0);
 					if(alu2.si < 0) {
 						alu2.si = -alu2.si;
 					}
@@ -421,8 +436,25 @@ int DCPU_run(struct isiCPUInfo * l_info, void * l_cpu, void * l_ram)
 			pr->IQU[oa - 1] = pr->IQU[oa];
 		}
 	}
-	l_info->cycl += cycl + pr->cycl;
+ecpu:
+	cycl += pr->cycl;
 	pr->cycl = 0;
+	if(!cycl) cycl = 1;
+	if(ccq < cycl) { // used too many
+		l_info->cyclewait += (cycl - ccq);
+		ccq = 0;
+	} else {
+		ccq -= cycl; // each op uses cycles
+	}
+	l_info->cycl += cycl;
+	cycl = 0;
+	} // while ccq
+	if(l_info->ctl & ISICTL_DEBUG) {
+		l_info->cyclequeue = 0;
+		l_info->cyclewait = 0;
+	} else {
+		l_info->cyclequeue = 0;
+	}
 	return 0;
 }
 
@@ -669,6 +701,7 @@ static int DCPU_setonfire(DCPU * pr)
 int DCPU_sethwcount(DCPU* pr, uint16_t count)
 {
 	pr->hwcount = count;
+	return 0;
 }
 
 int DCPU_sethwqcallback(DCPU* pr, DCPUext_query efc)
@@ -678,6 +711,7 @@ int DCPU_sethwqcallback(DCPU* pr, DCPUext_query efc)
 		pr->control |= 1;
 		return 1; 
 	}
+	return 0;
 }
 
 int DCPU_sethwicallback(DCPU* pr, DCPUext_interupt efc)
@@ -687,5 +721,6 @@ int DCPU_sethwicallback(DCPU* pr, DCPUext_interupt efc)
 		pr->control |= 2;
 		return 1; 
 	}
+	return 0;
 }
 

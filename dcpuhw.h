@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <stdint.h>
 #include "dcpu.h"
+#include "cputypes.h"
 
 #define HWQ_SUCCESS 1
 #define HWQ_FAIL 0
@@ -20,12 +21,10 @@ struct systemhwstate {
 	int netwfd;
 	int cpuid;
 	int hwnum;
+	struct timespec crun;
 	uint16_t *mem;
 	uint16_t *regs;
 	uint16_t msg;
-	int delta_cycles;
-	int delta_sec;
-	int delta_usec;
 };
 
 int HWM_InitLoadout(DCPU *cpu, int devct);

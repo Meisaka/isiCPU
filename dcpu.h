@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 #include <string.h>
-
+#include <time.h>
 
 typedef struct stDCPU {
 	uint16_t R[8];
@@ -45,7 +45,7 @@ struct isiCPUInfo;
 
 void DCPU_init(DCPU* pr, uint16_t * ram);
 void DCPU_reset(DCPU* pr);
-int DCPU_run(struct isiCPUInfo *, void * l_cpu, void * l_ram);
+int DCPU_run(struct isiCPUInfo *, struct timespec);
 int DCPU_interupt(DCPU* pr, uint16_t msg);
 int DCPU_sethwcount(DCPU* pr, uint16_t count);
 int DCPU_sethwqcallback(DCPU*, DCPUext_query);

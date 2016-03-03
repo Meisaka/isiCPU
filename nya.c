@@ -1,5 +1,6 @@
 
 #include "dcpuhw.h"
+#include <unistd.h>
 
 // TODO Not quite "Offical"
 static unsigned short nya_deffont[] = {
@@ -43,6 +44,7 @@ static unsigned short nya_defpal[] = {
 };
 
 struct NyaLEM {
+	struct timespec lupdate;
 	unsigned short dspmem;
 	unsigned short fontmem;
 	unsigned short palmem;
@@ -69,6 +71,8 @@ int Nya_LEM_Init(struct NyaLEM* dsp, int i)
 	dsp->dspmem = 0;
 	dsp->fontmem = 0;
 	dsp->version = 0x1802;
+	dsp->lupdate.tv_sec = 0;
+	dsp->lupdate.tv_nsec = 0;
 	return 0;
 }
 
@@ -137,6 +141,7 @@ static int Nya_LEM_voiddisp(struct NyaLEM *dsp, struct systemhwstate *isi)
 			dsp->cachedisp[dsl] = isi->mem[dsa + dsl] ^ 1;
 		}
 	}
+	return 0;
 }
 
 int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
@@ -144,49 +149,56 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 	struct NyaLEM* dsp;
 	uint16_t dsa;
 	int dsl, dur;
-	uint16_t ddb[388];
+	uint16_t ddb[400];
 	int ddi, dse, dss;
 	if(!hwd) return -1;
 	dsp = (struct NyaLEM*)hwd;
 	if(isi->msg == 0x3400) {
+		fprintf(stderr, "M: %04x \n", dsp->dspmem);
 		for(dur = 0; dur < 384; dur++) {
 			fprintf(stderr,"%04x ",dsp->cachedisp[dur]);
 			if(dur % 16 == 15) fprintf(stderr,"\n");
 		}
 	}
 	if(!isi->netwfd) return 0; // quit if no network
+	if(dsp->lupdate.tv_sec) {
+		if(isi->crun.tv_sec < dsp->lupdate.tv_sec
+			|| isi->crun.tv_nsec < dsp->lupdate.tv_nsec) {
+			return 0;
+		}
+		isi_addtime(&dsp->lupdate, 50000000);
+	} else {
+		dsp->lupdate.tv_sec = isi->crun.tv_sec;
+		dsp->lupdate.tv_nsec = isi->crun.tv_nsec;
+		isi_addtime(&dsp->lupdate, 50000000);
+	}
 	if(dsp->dspmem) {
-		if(dsp->dlyu < 500) {
-			dsa = dsp->dspmem;
-			dur = 0;
-			ddi = 0;
-			dss = 0;
-			dse = 0;
-			
-			ddb[0] = 0xE7AA; // Type code
+		dsa = dsp->dspmem;
+		dur = 0;
+		ddi = 0;
+		dss = 0;
+		dse = 0;
 
-			// Simple display delta protocol
-			for(dsl = 0; dsl < 384; dsl++) {
-				dss = dsl;
-				while(dsl < 384 && isi->mem[dsa+dsl] != dsp->cachedisp[dsl]) {
-					ddb[5+ddi] = isi->mem[dsa+dsl];
-					dsp->cachedisp[dsl] = isi->mem[dsa+dsl];
-					ddi++; dsl++;
-				}
-				if(ddi) {
-					ddb[1] = 0; // ID
-					ddb[2] = 0; // ID
-					ddb[3] = dss; // address
-					ddb[4] = ddi; // length (words)
-					if(isi->netwfd) {
-						write(isi->netwfd, (char*)ddb, 10+(ddi*2));
-					}
-					ddi = 0;
-				}
+		ddb[0] = 0xE7AA; // Type code
+
+		// Simple display delta protocol
+		for(dsl = 0; dsl < 384; dsl++) {
+			dss = dsl;
+			while(dsl < 384 && isi->mem[dsa+dsl] != dsp->cachedisp[dsl]) {
+				ddb[5+ddi] = isi->mem[dsa+dsl];
+				dsp->cachedisp[dsl] = isi->mem[dsa+dsl];
+				ddi++; dsl++;
 			}
-			dsp->dlyu = 0;
-		} else {
-			dsp->dlyu++;
+			if(ddi) {
+				ddb[1] = 0; // ID
+				ddb[2] = 0; // ID
+				ddb[3] = dss; // address
+				ddb[4] = ddi; // length (words)
+				if(isi->netwfd) {
+					write(isi->netwfd, (char*)ddb, 10+(ddi*2));
+				}
+				ddi = 0;
+			}
 		}
 	}
 

@@ -17,7 +17,7 @@ struct stdevtable devtable[] = {
 {0x6107,0x0001,0x30cf,0x7406,ECIV_HI,ECIV_LO,"Keyboard",
 	Keyboard_Query,Keyboard_HWI,Keyboard_Tick,Keyboard_SIZE,NULL},
 
-{0x4000,0x0001,0x12d0,0xb402,ECIV_HI,ECIV_LO,"Clock",
+{0xc000,0x0001,0x12d0,0xb402,ECIV_HI,ECIV_LO,"Clock",
 	Timer_Query,NULL,NULL,NULL,NULL},
 
 {0xE006,0x1802,0x7349,0xf615,NYAE_HI,NYAE_LO,"Nya LEM",
