@@ -163,10 +163,35 @@ int loadbinfile(const char* path, int endian, unsigned char * mem)
 
 void sysfaulthdl(int ssn) {
 	if(ssn == SIGINT) {
+		if(haltnow) {
+			fprintf(stderr, "FORCED ABORT!\n");
+			exit(4);
+		}
 		haltnow = 1;
 		fprintf(stderr, "SIGNAL CAUGHT!\n");
 	}
 }
+
+static const char * DCPUOP[] = {
+	"---", "SET", "ADD", "SUB", "MUL", "MLI", "DIV", "DVI",
+	"MOD", "MDI", "AND", "BOR", "XOR", "SHR", "ASR", "SHL",
+	"IFB", "IFC", "IFE", "IFN", "IFG", "IFA", "IFL", "IFU",
+	"!18", "!19", "ADX", "SBX", "!1C", "!1D", "STI", "STD",
+	"---", "JSR", "!02", "!03", "!04", "!05", "!06", "!07",
+	"INT", "IAG", "IAS", "RFI", "IAQ", "!0d", "!0e", "!0f",
+	"HWN", "HWQ", "HWI", "!13", "!14", "!15", "!16", "!17",
+	"!18", "!19", "!1a", "!1b", "!1c", "!1d", "!1e", "!1f",
+};
+static const char * DCPUP[] = {
+	"A", "B", "C", "X", "Y", "Z", "I", "J",
+	"[A]", "[B]", "[C]", "[X]", "[Y]", "[Z]", "[I]", "[J]",
+	"[A+%04x]", "[B+%04x]", "[C+%04x]", "[X+%04x]", "[Y+%04x]", "[Z+%04x]", "[I+%04x]", "[J+%04x]",
+	"PSHPOP", "[SP]", "[SP+%04x]", "SP", "PC", "EX", "[%04x]", "%04x",
+	"-1", " 0", " 1", " 2", " 3", " 4", " 5", " 6",
+	" 7", " 8", " 9", "10", "11", "12", "13", "14",
+	"15", "16", "17", "18", "19", "20", "21", "22",
+	"23", "24", "25", "26", "27", "28", "29", "30",
+};
 
 static const char * DIAG_L4 =
 	" A    B    C    X    Y    Z   \n"
@@ -175,7 +200,70 @@ static const char * DIAG_L4 =
 	"%04x %04x %04x %04x %04x %04x \n";
 static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA  \n"
-	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x \n";
+	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x ";
+
+void showdisasm_dcpu(const struct isiCPUInfo *info)
+{
+	const DCPU * cpu = (const DCPU*)info->cpustate;
+	uint16_t ma = cpu->PC;
+	uint16_t m = ((uint16_t*)info->memptr)[ma++];
+	int op = m & 0x1f;
+	int ob = (m >> 5) & 0x1f;
+	int oa = (m >> 10) & 0x3f;
+	int nwa, nwb, lu;
+	uint16_t lua, lub;
+	lu = 0;
+	if(oa >= 8 && oa < 16) {
+		lu |= 1;
+		lua = cpu->R[oa - 8];
+	} else if((oa >= 16 && oa < 24) || oa == 26 || oa == 30 || oa == 31) {
+		nwa = ((uint16_t*)info->memptr)[ma++];
+		if(oa != 31) lu |= 1;
+		if(oa >= 16 && oa < 24) {
+			lua = cpu->R[oa - 16] + nwa;
+		} else if(oa == 24 || oa == 25) {
+			lua = cpu->SP;
+		} else if(oa == 26) {
+			lua = cpu->SP + nwa;
+		} else if(oa == 30) {
+			lua = nwa;
+		}
+	}
+	if(op) {
+		if(ob >= 8 && ob < 16) {
+			lu |= 2;
+			lub = cpu->R[ob - 8];
+		} else if((ob >= 16 && ob < 24) || ob == 26 || ob == 30 || ob == 31) {
+			nwb = ((uint16_t*)info->memptr)[ma++];
+			if(ob != 31) lu |= 2;
+			if(ob >= 16 && ob < 24) {
+				lub = cpu->R[ob - 16] + nwb;
+			} else if(ob == 24) {
+				lub = cpu->SP - 1;
+			} else if(ob == 25) {
+				lub = cpu->SP;
+			} else if(ob == 26) {
+				lub = cpu->SP + nwb;
+			} else if(ob == 30) {
+				lub = nwb;
+			}
+		}
+		fprintf(stderr, "%s ", DCPUOP[op]);
+		fprintf(stderr, DCPUP[ob], nwb);
+		fprintf(stderr, ", ");
+		fprintf(stderr, DCPUP[oa], nwa);
+	} else {
+		fprintf(stderr, "%s ", DCPUOP[32+ob]);
+		fprintf(stderr, DCPUP[oa], nwa);
+	}
+	if(lu & 2) {
+		fprintf(stderr, "  b: %04x [%04x]", lub, ((uint16_t*)info->memptr)[lub]);
+	}
+	if(lu & 1) {
+		fprintf(stderr, "  a: %04x [%04x]", lua, ((uint16_t*)info->memptr)[lua]);
+	}
+	fprintf(stderr, "\n");
+}
 
 void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
 {
@@ -185,6 +273,9 @@ void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
 	fprintf(stderr, diagt,
 	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
 	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA);
+	if(fmt) {
+		showdisasm_dcpu(info);
+	}
 }
 void showdiag_up(int l)
 {
@@ -208,6 +299,22 @@ void isi_addtime(struct timespec * t, size_t nsec) {
 	t->tv_sec += asec;
 }
 
+void isi_setrate(struct isiCPUInfo *info, size_t rate) {
+	info->runrate = 1000000000 / rate; // Nano seconds per cycle (100kHz)
+	if(info->runrate > quantum) {
+		info->itvl = (info->runrate / quantum); // quantums per cycle
+		info->rate = 1;
+	} else {
+		info->rate = (quantum / info->runrate); // cycles per quantum
+		info->itvl = 1;
+	}
+}
+
+struct stats {
+	int quanta;
+	int cpusched;
+};
+
 int main(int argc, char**argv, char**envp)
 {
 
@@ -219,12 +326,13 @@ int main(int argc, char**argv, char**envp)
 	int endian;
 	int ssvr;
 	int cux;
-	long long tcc = 0;
 	uintptr_t gccq = 0;
 	uintptr_t glccq = 0;
 	uintptr_t lucycles = 0;
 	uintptr_t lucpus = 0;
+	struct stats sts = {0, };
 	int paddlimit = 0;
+	int premlimit = 0;
 	int dbg;
 
 	struct timeval ltv;
@@ -272,7 +380,6 @@ int main(int argc, char**argv, char**envp)
 					case 'm':
 						softcpumax = CPUSMAX;
 						softcpumin = CPUSMIN;
-						numberofcpus = CPUSMIN;
 						break;
 					case 'p':
 						k = -1;
@@ -325,17 +432,15 @@ int main(int argc, char**argv, char**envp)
 			allcpus[cux].memsize = 0x10000;
 			allcpus[cux].cpustate = &cpl[cux];
 			allcpus[cux].memptr = mem[cux];
-			allcpus[cux].runrate = 10000; // Nano seconds per cycle (100kHz)
-			allcpus[cux].rate = (quantum / allcpus[cux].runrate); // cycles per quantum
+			isi_setrate(allcpus+cux, 100000); // 100kHz
 			allcpus[cux].RunCycles = DCPU_run;
 			allcpus[cux].ctl = dbg ? ISICTL_DEBUG : 0;
 			allcpus[cux].cyclequeue = 0; // Should always be reset
 			DCPU_init(allcpus[cux].cpustate, allcpus[cux].memptr);
-			HWM_InitLoadout(allcpus[cux].cpustate, 5);
+			HWM_InitLoadout(allcpus[cux].cpustate, 4);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 2);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 0);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 1);
-			HWM_DeviceAdd(allcpus[cux].cpustate, 4);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 5);
 			HWM_InitAll(allcpus[cux].cpustate);
 			DCPU_sethwqcallback(allcpus[cux].cpustate, HWM_Query);
@@ -373,18 +478,22 @@ int main(int argc, char**argv, char**envp)
 					}
 				} else {
 					int ccq = 0;
+					int tcc = numberofcpus * 2;
+					if(tcc < 20) tcc = 20;
 					fetchtime(&CRun);
-					while((ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
-						isi_addtime(&ccpu->nrun, quantum);
+					while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
+						isi_addtime(&ccpu->nrun, quantum * ccpu->itvl);
+						sts.quanta++;
 						ccpu->RunCycles(ccpu, CRun);
 						//TODO some hardware may need to work at the same time
 						lucycles += ccpu->cycl;
-						tcc += ccpu->cyclequeue;
 						ccpu->cyclequeue = 0;
 						ccpu->cycl = 0;
 						fetchtime(&CRun);
-						gccq++;
+						ccq++;
 					}
+					if(ccq >= tcc) gccq++;
+					sts.cpusched++;
 				}
 				fetchtime(&CRun);
 
@@ -402,14 +511,33 @@ int main(int argc, char**argv, char**envp)
 				clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
-				clkrate = ((((double)lucycles) / clkdelta) * 0.001) / numberofcpus;
-				fprintf(stderr, "DC: %.4f sec, %d at %.3f kHz   \r",
-						clkdelta, numberofcpus, clkrate);
+				clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
+				fprintf(stderr, "DC: %.4f sec, %d at % 9.3f kHz   (% 8d) [Q:% 8d, S:% 8d, SC:% 8d]\r",
+						clkdelta, numberofcpus, clkrate, gccq,
+						sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
+						);
 				showdiag_up(4);
 				fetchtime(&LTUTime);
+				if(gccq >= sts.cpusched / numberofcpus ) {
+					if(numberofcpus > softcpumin) {
+						numberofcpus--;
+						premlimit--;
+						paddlimit = 0;
+					}
+				} else {
+					if(numberofcpus < softcpumax) {
+						fetchtime(&allcpus[numberofcpus].nrun);
+						isi_addtime(&allcpus[numberofcpus].nrun, quantum);
+						ccpu->cyclequeue = 0;
+						numberofcpus++;
+					}
+				}
 				lucycles = 0;
 				lucpus = 0;
 				gccq = 0;
+				memset(&sts, 0, sizeof(struct stats));
+				if(premlimit < 20) premlimit+=10;
+				if(paddlimit < 20) paddlimit+=2;
 			}
 
 			ltv.tv_sec = 0;
@@ -462,22 +590,7 @@ int main(int argc, char**argv, char**envp)
 			if(!dbg) {
 				cux++;
 				if(cux > numberofcpus - 1) {
-					if(gccq) {
-						if(numberofcpus > softcpumin) {
-							if(gccq > glccq) numberofcpus--;
-						}
-						paddlimit = 0;
-					} else {
-						if(numberofcpus < softcpumax && paddlimit > 0) {
-							fetchtime(&ccpu->nrun);
-							ccpu->cyclequeue = 0;
-							numberofcpus++;
-							paddlimit--;
-						} else {
-							if(paddlimit < softcpumax) paddlimit++;
-						}
-					}
-					cux = 0;
+										cux = 0;
 					glccq = gccq;
 				}
 			} else {

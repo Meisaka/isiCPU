@@ -14,6 +14,7 @@ typedef struct isiCPUInfo {
 	size_t memsize;
 	size_t rate;
 	size_t runrate;
+	size_t itvl;
 	void * cpustate;
 	void * memptr;
 	int ctl;
