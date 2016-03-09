@@ -17,8 +17,11 @@ static int DCPU_setonfire(DCPU * );
 static inline void DCPU_skipref(int , DCPU* );
 static uint16_t LPC;
 
-void DCPU_init(DCPU* pr, uint16_t *ram)
+void DCPU_init(struct isiCPUInfo *info, uint16_t *ram)
 {
+	DCPU* pr = (DCPU*)info->cpustate;
+	info->archtype = ARCH_DCPU;
+	info->RunCycles = DCPU_run;
 	memset(pr, 0, sizeof(DCPU));
 	pr->memptr = ram;
 }
@@ -35,7 +38,6 @@ void DCPU_reset(DCPU* pr)
 	pr->SP = 0;
 	pr->IA = 0;
 	pr->MODE = 0;
-	pr->rcycl = 0;
 	pr->cycl = 0;
 	pr->IQC = 0;
 }
@@ -88,7 +90,7 @@ static const int DCPU_dwtbl[] =
 int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 {
 	DCPU *pr = (DCPU*)l_info->cpustate;
-	uint16_t *ram = (uint16_t*)l_info->memptr;
+	uint16_t *ram = pr->memptr;
 	size_t cycl = 0;
 	int op;
 	int oa;
@@ -105,36 +107,27 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 	} alu2;
 	
 	uintptr_t ccq = 0;
-	if(l_info->ctl & ISICTL_DEBUG) {
-		ccq = l_info->cyclequeue ? 1 : 0;
+	if(l_info->ctl & ISICTL_STEP) {
+		if(l_info->ctl & ISICTL_STEPE) {
+			ccq = 1;
+			l_info->ctl &= ~ISICTL_STEPE;
+		} else {
+			l_info->nrun.tv_sec = crun.tv_sec;
+			l_info->nrun.tv_nsec = crun.tv_nsec;
+			isi_addtime(&l_info->nrun, l_info->runrate);
+		}
 	} else {
 		ccq = l_info->rate;
-		if(l_info->cyclewait) {
-			if(l_info->cyclewait < ccq) {
-				ccq -= l_info->cyclewait;
-				l_info->cyclewait = 0;
-			} else {
-				l_info->cyclewait -= ccq;
-				ccq = 0;
-			}
-		}
 	}
-	while(ccq) {
+	while(ccq && (l_info->nrun.tv_sec < crun.tv_sec || l_info->nrun.tv_nsec < crun.tv_nsec)) {
 
 	if(pr->MODE == BURNING) {
-		pr->rcycl += 7;
 		cycl += 3;
 	}
 
 	if((pr->MODE & DCPUMODE_EXTINT)) {
-		if(!(pr->wcycl--)) {
-			pr->MODE ^= DCPUMODE_EXTINT;
-		}
-	}
-	if((pr->MODE & DCPUMODE_EXTINT)) {
-		pr->rcycl++;
+		pr->MODE ^= DCPUMODE_EXTINT;
 	} else {
-		pr->rcycl++;
 		op = ram[(uint16_t)(pr->PC++)];
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
@@ -211,7 +204,7 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 				//pr->MODE |= DCPUMODE_EXTINT;
 				if((pr->control & 2) && (pr->hwiaf) && (op = pr->hwiaf(pr->R, alu1.u, pr))) {
 					if(op > 0) {
-						pr->wcycl = op;
+						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
 						goto ecpu;
 					}
@@ -441,20 +434,14 @@ ecpu:
 	pr->cycl = 0;
 	if(!cycl) cycl = 1;
 	if(ccq < cycl) { // used too many
-		l_info->cyclewait += (cycl - ccq);
 		ccq = 0;
 	} else {
 		ccq -= cycl; // each op uses cycles
 	}
 	l_info->cycl += cycl;
+	isi_addtime(&l_info->nrun, cycl * l_info->runrate);
 	cycl = 0;
 	} // while ccq
-	if(l_info->ctl & ISICTL_DEBUG) {
-		l_info->cyclequeue = 0;
-		l_info->cyclewait = 0;
-	} else {
-		l_info->cyclequeue = 0;
-	}
 	return 0;
 }
 
@@ -472,12 +459,11 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 {
 	if(p < 0x18) {
 		if(p & 0x0010) {
-			pr->rcycl+=2; pr->cycl++;
+			pr->cycl++;
 			ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ] = v;
 			return;
 		} else {
 			if(p & 0x8) {
-				pr->rcycl++;
 				ram[ pr->R[p & 0x7] ] = v;
 				return;
 			} else {
@@ -489,15 +475,13 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 		if(p < 0x20) {
 			switch(p) {
 			case 0x18:
-				pr->rcycl++;
 				ram[--(pr->SP)] = v;
 				return;
 			case 0x19:
-				pr->rcycl++;
 				ram[pr->SP] = v;
 				return;
 			case 0x1a:
-				pr->rcycl+=2; pr->cycl++;
+				pr->cycl++;
 				ram[(uint16_t)(pr->SP + ram[pr->PC++]) ] = v;
 				return;
 			case 0x1b:
@@ -510,11 +494,11 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 				pr->EX = v;
 				return;
 			case 0x1e:
-				pr->rcycl += 2; pr->cycl++;
+				pr->cycl++;
 				ram[ ram[pr->PC++] ] = v;
 				return;
 			case 0x1f:
-				pr->rcycl++; pr->cycl++;
+				pr->cycl++;
 				// READ: ram[ pr->PC ];
 				pr->PC++;
 				// Fail silently
@@ -533,12 +517,11 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 {
 	if(p < 0x18) {
 		if(p & 0x0010) {
-			pr->rcycl+=2; pr->cycl++;
+			pr->cycl++;
 			ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ] = v;
 			return;
 		} else {
 			if(p & 0x8) {
-				pr->rcycl++;
 				ram[ pr->R[p & 0x7] ] = v;
 				return;
 			} else {
@@ -550,15 +533,13 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 		if(p < 0x20) {
 			switch(p) {
 			case 0x18:
-				pr->rcycl++;
 				ram[pr->SP] = v;
 				return;
 			case 0x19:
-				pr->rcycl++;
 				ram[pr->SP] = v;
 				return;
 			case 0x1a:
-				pr->rcycl+=2; pr->cycl++;
+				pr->cycl++;
 				ram[(uint16_t)(pr->SP + ram[pr->PC++]) ] = v;
 				return;
 			case 0x1b:
@@ -571,11 +552,11 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 				pr->EX = v;
 				return;
 			case 0x1e:
-				pr->rcycl += 2; pr->cycl++;
+				pr->cycl++;
 				ram[ ram[pr->PC++] ] = v;
 				return;
 			case 0x1f:
-				pr->rcycl++; pr->cycl++;
+				pr->cycl++;
 				// READ: ram[ pr->PC ];
 				pr->PC++;
 				// Fail silently
@@ -595,11 +576,10 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
 {
 	if(p < 0x18) {
 		if(p & 0x0010) {
-			pr->rcycl+=2; pr->cycl++;
+			pr->cycl++;
 			return ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ];
 		} else {
 			if(p & 0x8) {
-				pr->rcycl++;
 				return ram[ pr->R[p & 0x7] ];
 			} else {
 				return pr->R[p & 0x7];
@@ -609,13 +589,11 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
 		if(p < 0x20) {
 			switch(p) {
 			case 0x18:
-				pr->rcycl++;
 				return ram[pr->SP++];
 			case 0x19:
-				pr->rcycl++;
 				return ram[pr->SP];
 			case 0x1a:
-				pr->rcycl+=2; pr->cycl++;
+				pr->cycl++;
 				return ram[(uint16_t)(pr->SP + ram[pr->PC++]) ];
 			case 0x1b:
 				return pr->SP;
@@ -624,10 +602,10 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
 			case 0x1d:
 				return pr->EX;
 			case 0x1e:
-				pr->rcycl += 2; pr->cycl++;
+				pr->cycl++;
 				return ram[ ram[pr->PC++] ];
 			case 0x1f:
-				pr->rcycl++; pr->cycl++;
+				pr->cycl++;
 				return ram[pr->PC++];
 			default:
 				// Should never actually happen
@@ -645,11 +623,10 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
 {
 	if(p < 0x18) {
 		if(p & 0x0010) {
-			pr->rcycl+=2; pr->cycl++;
+			pr->cycl++;
 			return ram[ (uint16_t)(ram[pr->PC] + pr->R[p & 0x7]) ];
 		} else {
 			if(p & 0x8) {
-				pr->rcycl++;
 				return ram[ pr->R[p & 0x7] ];
 			} else {
 				return pr->R[p & 0x7];
@@ -659,13 +636,11 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
 		if(p < 0x20) {
 			switch(p) {
 			case 0x18:
-				pr->rcycl++;
 				return ram[--(pr->SP)];
 			case 0x19:
-				pr->rcycl++;
 				return ram[pr->SP];
 			case 0x1a:
-				pr->rcycl+=2; pr->cycl++;
+				pr->cycl++;
 				return ram[(uint16_t)(pr->SP + ram[pr->PC]) ];
 			case 0x1b:
 				return pr->SP;
@@ -674,10 +649,10 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
 			case 0x1d:
 				return pr->EX;
 			case 0x1e:
-				pr->rcycl += 2; pr->cycl++;
+				pr->cycl++;
 				return ram[ ram[pr->PC] ];
 			case 0x1f:
-				pr->rcycl++; pr->cycl++;
+				pr->cycl++;
 				return ram[pr->PC];
 			default:
 				// Should never actually happen

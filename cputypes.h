@@ -11,24 +11,22 @@ typedef int (*CPUECall)(struct isiCPUInfo *, struct timespec crun);
 
 typedef struct isiCPUInfo {
 	int archtype;
-	size_t memsize;
+	int ctl;
 	size_t rate;
 	size_t runrate;
 	size_t itvl;
 	void * cpustate;
-	void * memptr;
-	int ctl;
 	CPUECall RunCycles;
 	struct timespec nrun;
 	size_t cycl;
-	uint64_t cyclequeue;
-	uint64_t cyclewait;
 } CPUSlot, *pCPUSlot;
 
 void isi_addtime(struct timespec *, size_t nsec);
 int HWM_TickAll(DCPU *, struct timespec, int fdnet, int msgin);
 
 #define ISICTL_DEBUG  ( 1 << 0 )
+#define ISICTL_STEP   ( 1 << 1 )
+#define ISICTL_STEPE  ( 1 << 2 )
 
 #define ARCH_NONE 0
 #define ARCH_DCPU 1

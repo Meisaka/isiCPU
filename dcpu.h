@@ -14,8 +14,6 @@ typedef struct stDCPU {
 	uint16_t IA;
 
 	unsigned long long cycl;
-	unsigned long wcycl;
-	unsigned long rcycl;
 	int MODE;
 	int control;
 	int cpuid;
@@ -43,7 +41,7 @@ typedef int (*DCPUext_interupt)(uint16_t*, uint16_t hwnum, DCPU *cpu);
 
 struct isiCPUInfo;
 
-void DCPU_init(DCPU* pr, uint16_t * ram);
+void DCPU_init(struct isiCPUInfo *, uint16_t * ram);
 void DCPU_reset(DCPU* pr);
 int DCPU_run(struct isiCPUInfo *, struct timespec);
 int DCPU_interupt(DCPU* pr, uint16_t msg);

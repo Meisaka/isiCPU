@@ -38,7 +38,7 @@ static int softcpumin = 1;
 
 static CPUSlot allcpus[CPUSMAX];
 DCPU cpl[CPUSMAX];
-short mem[CPUSMAX][0x10000];
+uint16_t mem[CPUSMAX][0x10000];
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desr] [-c <asmfile>] [-B <binfile>]\n\n"
@@ -196,17 +196,17 @@ static const char * DCPUP[] = {
 static const char * DIAG_L4 =
 	" A    B    C    X    Y    Z   \n"
 	"%04x %04x %04x %04x %04x %04x \n"
-	" I    J    PC   SP   EX   IA  \n"
-	"%04x %04x %04x %04x %04x %04x \n";
+	" I    J    PC   SP   EX   IA   CL\n"
+	"%04x %04x %04x %04x %04x %04x % 2d \n";
 static const char * DIAG_L2 =
-	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA  \n"
-	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x ";
+	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
+	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
 
 void showdisasm_dcpu(const struct isiCPUInfo *info)
 {
 	const DCPU * cpu = (const DCPU*)info->cpustate;
 	uint16_t ma = cpu->PC;
-	uint16_t m = ((uint16_t*)info->memptr)[ma++];
+	uint16_t m = (cpu->memptr)[ma++];
 	int op = m & 0x1f;
 	int ob = (m >> 5) & 0x1f;
 	int oa = (m >> 10) & 0x3f;
@@ -217,7 +217,7 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 		lu |= 1;
 		lua = cpu->R[oa - 8];
 	} else if((oa >= 16 && oa < 24) || oa == 26 || oa == 30 || oa == 31) {
-		nwa = ((uint16_t*)info->memptr)[ma++];
+		nwa = (cpu->memptr)[ma++];
 		if(oa != 31) lu |= 1;
 		if(oa >= 16 && oa < 24) {
 			lua = cpu->R[oa - 16] + nwa;
@@ -234,7 +234,7 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 			lu |= 2;
 			lub = cpu->R[ob - 8];
 		} else if((ob >= 16 && ob < 24) || ob == 26 || ob == 30 || ob == 31) {
-			nwb = ((uint16_t*)info->memptr)[ma++];
+			nwb = (cpu->memptr)[ma++];
 			if(ob != 31) lu |= 2;
 			if(ob >= 16 && ob < 24) {
 				lub = cpu->R[ob - 16] + nwb;
@@ -257,10 +257,10 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 		fprintf(stderr, DCPUP[oa], nwa);
 	}
 	if(lu & 2) {
-		fprintf(stderr, "  b: %04x [%04x]", lub, ((uint16_t*)info->memptr)[lub]);
+		fprintf(stderr, "  b: %04x [%04x]", lub, (cpu->memptr)[lub]);
 	}
 	if(lu & 1) {
-		fprintf(stderr, "  a: %04x [%04x]", lua, ((uint16_t*)info->memptr)[lua]);
+		fprintf(stderr, "  a: %04x [%04x]", lua, (cpu->memptr)[lua]);
 	}
 	fprintf(stderr, "\n");
 }
@@ -272,7 +272,7 @@ void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
 	diagt = fmt ? DIAG_L2 : DIAG_L4;
 	fprintf(stderr, diagt,
 	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
-	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA);
+	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA, info->cycl);
 	if(fmt) {
 		showdisasm_dcpu(info);
 	}
@@ -428,15 +428,10 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun == 1) { // normal operation /////////////////////////
 
 		for(cux = 0; cux < softcpumax; cux++) {
-			allcpus[cux].archtype = ARCH_DCPU;
-			allcpus[cux].memsize = 0x10000;
 			allcpus[cux].cpustate = &cpl[cux];
-			allcpus[cux].memptr = mem[cux];
 			isi_setrate(allcpus+cux, 100000); // 100kHz
-			allcpus[cux].RunCycles = DCPU_run;
-			allcpus[cux].ctl = dbg ? ISICTL_DEBUG : 0;
-			allcpus[cux].cyclequeue = 0; // Should always be reset
-			DCPU_init(allcpus[cux].cpustate, allcpus[cux].memptr);
+			allcpus[cux].ctl = dbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
+			DCPU_init(allcpus+cux, mem[cux]);
 			HWM_InitLoadout(allcpus[cux].cpustate, 4);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 2);
 			HWM_DeviceAdd(allcpus[cux].cpustate, 0);
@@ -446,7 +441,7 @@ int main(int argc, char**argv, char**envp)
 			DCPU_sethwqcallback(allcpus[cux].cpustate, HWM_Query);
 			DCPU_sethwicallback(allcpus[cux].cpustate, HWM_HWI);
 			if(binf) {
-				loadbinfile(binf, endian, (unsigned char*)allcpus[cux].memptr);
+				loadbinfile(binf, endian, (unsigned char*)mem[cux]);
 			}
 		}
 		if(ssvr) {
@@ -462,6 +457,9 @@ int main(int argc, char**argv, char**envp)
 		fetchtime(&LTUTime);
 		lucycles = 0; // how many cycles ran (debugging)
 		cux = 0; // CPU index - currently never changes
+		if(allcpus[cux].ctl & ISICTL_DEBUG) {
+			showdiag_dcpu(allcpus+cux, 1);
+		}
 		while(!haltnow) {
 			CPUSlot * ccpu;
 			ccpu = allcpus + cux;
@@ -469,32 +467,24 @@ int main(int argc, char**argv, char**envp)
 			if(((DCPU*)ccpu->cpustate)->MODE != BURNING) {
 				struct timespec CRun;
 
-				if(ccpu->ctl & ISICTL_DEBUG) {
-					if(lucycles) {
-						ccpu->RunCycles(ccpu, CRun);
-						ccpu->cycl = 0;
-						lucycles = 0;
+				int ccq = 0;
+				int tcc = numberofcpus * 2;
+				if(tcc < 20) tcc = 20;
+				fetchtime(&CRun);
+				while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
+					sts.quanta++;
+					ccpu->RunCycles(ccpu, CRun);
+					//TODO some hardware may need to work at the same time
+					lucycles += ccpu->cycl;
+					if((ccpu->ctl & ISICTL_DEBUG) && (ccpu->cycl)) {
 						showdiag_dcpu(ccpu, 1);
 					}
-				} else {
-					int ccq = 0;
-					int tcc = numberofcpus * 2;
-					if(tcc < 20) tcc = 20;
+					ccpu->cycl = 0;
 					fetchtime(&CRun);
-					while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
-						isi_addtime(&ccpu->nrun, quantum * ccpu->itvl);
-						sts.quanta++;
-						ccpu->RunCycles(ccpu, CRun);
-						//TODO some hardware may need to work at the same time
-						lucycles += ccpu->cycl;
-						ccpu->cyclequeue = 0;
-						ccpu->cycl = 0;
-						fetchtime(&CRun);
-						ccq++;
-					}
-					if(ccq >= tcc) gccq++;
-					sts.cpusched++;
+					ccq++;
 				}
+				if(ccq >= tcc) gccq++;
+				sts.cpusched++;
 				fetchtime(&CRun);
 
 				// If the queue has cycles left over then the server may be overloaded
@@ -506,8 +496,8 @@ int main(int argc, char**argv, char**envp)
 			double clkdelta;
 			float clkrate;
 			fetchtime(&TUTime);
-			if(!dbg && TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
-				showdiag_dcpu(&allcpus[0], 0);
+			if(TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
+				if(!dbg) showdiag_dcpu(&allcpus[0], 0);
 				clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
@@ -516,7 +506,7 @@ int main(int argc, char**argv, char**envp)
 						clkdelta, numberofcpus, clkrate, gccq,
 						sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
 						);
-				showdiag_up(4);
+				if(!dbg) showdiag_up(4);
 				fetchtime(&LTUTime);
 				if(gccq >= sts.cpusched / numberofcpus ) {
 					if(numberofcpus > softcpumin) {
@@ -528,7 +518,6 @@ int main(int argc, char**argv, char**envp)
 					if(numberofcpus < softcpumax) {
 						fetchtime(&allcpus[numberofcpus].nrun);
 						isi_addtime(&allcpus[numberofcpus].nrun, quantum);
-						ccpu->cyclequeue = 0;
 						numberofcpus++;
 					}
 				}
@@ -552,8 +541,7 @@ int main(int argc, char**argv, char**envp)
 					fetchtime(&CRun);
 					switch(cc) {
 					case 10:
-						lucycles = 1;
-						allcpus[0].cyclequeue = 1;
+						allcpus[0].ctl |= ISICTL_STEPE;
 						break;
 					case 'r':
 						i = read(0, ccv, 5);
@@ -590,7 +578,7 @@ int main(int argc, char**argv, char**envp)
 			if(!dbg) {
 				cux++;
 				if(cux > numberofcpus - 1) {
-										cux = 0;
+					cux = 0;
 					glccq = gccq;
 				}
 			} else {

@@ -50,9 +50,6 @@ struct NyaLEM {
 	unsigned short palmem;
 	unsigned short border;
 	unsigned short version;
-	int state;
-	int dlyu;
-	int dlln;
 	unsigned short cachepal[16];
 	unsigned short cachefont[256];
 	unsigned short cachedisp[384]; // Used for sending delta values
@@ -150,7 +147,7 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 	uint16_t dsa;
 	int dsl, dur;
 	uint16_t ddb[400];
-	int ddi, dse, dss;
+	int ddi, dss;
 	if(!hwd) return -1;
 	dsp = (struct NyaLEM*)hwd;
 	if(isi->msg == 0x3400) {
@@ -177,7 +174,6 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 		dur = 0;
 		ddi = 0;
 		dss = 0;
-		dse = 0;
 
 		ddb[0] = 0xE7AA; // Type code
 
