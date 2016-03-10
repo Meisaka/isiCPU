@@ -9,7 +9,6 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <signal.h>
-#include "asm.h"
 #include "dcpu.h"
 #include "dcpuhw.h"
 #include "cputypes.h"
@@ -17,7 +16,6 @@
 #define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
 
-static struct timespec TUTime;
 static struct timespec LTUTime;
 static int fdserver = 0;
 static int haltnow = 0;
@@ -41,16 +39,17 @@ DCPU cpl[CPUSMAX];
 uint16_t mem[CPUSMAX][0x10000];
 
 static const char * const gsc_usage =
-"Usage:\n%s [-Desr] [-c <asmfile>] [-B <binfile>]\n\n"
+"Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
 "Options:\n -D  Enable debug\n -e  Assume <binfile> is little-endian\n"
 " -s  Enable server and wait for connection before\n"
 "     starting emulation. (Valid with -r)\n"
-" -r  Run a DCPU emulation.\n"
-" -m  Emulate multiple DCPUs\n"
+" -p <portnum>  Listen on <portnum> instead of the default (valid with -s)\n"
+" -r  Run a DCPU emulation (interactively).\n"
+" -m  Emulate multiple DCPUs (test mode)\n"
+" -D  Enable debugging and single stepping DCPU\n"
 " -B <binfile>  Load <binfile> into DCPU memory starting at 0x0000.\n"
 "      File is assmued to contain 16 bit words, 2 octets each in big-endian\n"
-"      Use the -e option to load little-endian files.\n"
-" -c <asmfile>  Load <asmfile> and asmemble it. (in-dev feature)\n";
+"      Use the -e option to load little-endian files.\n";
 
 int loadtxtfile(FILE* infl, char** txtptr, int * newsize)
 {
@@ -362,21 +361,6 @@ int main(int argc, char**argv, char**envp)
 					case 'r':
 						rqrun = 1;
 						break;
-					case 'c':
-						k = -1; // end search
-						if(i+1 < argc) {
-							opfile = fopen(argv[i+1], "r");
-							if(!opfile) {
-								perror("Open File");
-							} else {
-								fprintf(stderr, "Loading file\n");
-							loadtxtfile(opfile, &asmtxt, &asmlen);
-							fclose(opfile);
-							DCPUASM_asm(asmtxt, asmlen, mem[0]);
-							i++;
-							}
-						}
-						break;
 					case 'm':
 						softcpumax = CPUSMAX;
 						softcpumin = CPUSMIN;
@@ -462,15 +446,15 @@ int main(int argc, char**argv, char**envp)
 		}
 		while(!haltnow) {
 			CPUSlot * ccpu;
+			struct timespec CRun;
+
 			ccpu = allcpus + cux;
+			fetchtime(&CRun);
 
-			if(((DCPU*)ccpu->cpustate)->MODE != BURNING) {
-				struct timespec CRun;
-
+			{
 				int ccq = 0;
 				int tcc = numberofcpus * 2;
 				if(tcc < 20) tcc = 20;
-				fetchtime(&CRun);
 				while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
 					sts.quanta++;
 					ccpu->RunCycles(ccpu, CRun);
@@ -493,12 +477,12 @@ int main(int argc, char**argv, char**envp)
 				HWM_TickAll(ccpu->cpustate, CRun, cux == 0 ? fdserver : 0, 0);
 			}
 
-			double clkdelta;
-			float clkrate;
-			fetchtime(&TUTime);
-			if(TUTime.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
+			fetchtime(&CRun);
+			if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
+				double clkdelta;
+				float clkrate;
 				if(!dbg) showdiag_dcpu(&allcpus[0], 0);
-				clkdelta = ((double)(TUTime.tv_sec - LTUTime.tv_sec)) + (((double)TUTime.tv_nsec) * 0.000000001);
+				clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
 				clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
