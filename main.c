@@ -20,8 +20,6 @@ static struct timespec LTUTime;
 static int fdserver = 0;
 static int haltnow = 0;
 
-static int cpucount = 0;
-
 static int listenportnumber = 58704;
 
 static const int quantum = 1000000000 / 10000; // ns
@@ -34,7 +32,7 @@ static int numberofcpus = 1;
 static int softcpumax = 1;
 static int softcpumin = 1;
 
-static CPUSlot allcpus[CPUSMAX];
+static struct isiCPUInfo allcpus[CPUSMAX];
 DCPU cpl[CPUSMAX];
 uint16_t mem[CPUSMAX][0x10000];
 
@@ -316,11 +314,7 @@ struct stats {
 
 int main(int argc, char**argv, char**envp)
 {
-
-	FILE* opfile;
-	char * asmtxt;
 	char * binf;
-	int asmlen;
 	int rqrun;
 	int endian;
 	int ssvr;
@@ -445,7 +439,7 @@ int main(int argc, char**argv, char**envp)
 			showdiag_dcpu(allcpus+cux, 1);
 		}
 		while(!haltnow) {
-			CPUSlot * ccpu;
+			struct isiCPUInfo * ccpu;
 			struct timespec CRun;
 
 			ccpu = allcpus + cux;
@@ -470,9 +464,6 @@ int main(int argc, char**argv, char**envp)
 				if(ccq >= tcc) gccq++;
 				sts.cpusched++;
 				fetchtime(&CRun);
-
-				// If the queue has cycles left over then the server may be overloaded
-				// some CPUs should be slowed or moved to a different server/thread
 
 				HWM_TickAll(ccpu->cpustate, CRun, cux == 0 ? fdserver : 0, 0);
 			}

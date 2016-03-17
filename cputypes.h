@@ -2,6 +2,7 @@
 #define _ISI_CPUTYPES_H_
 
 #include <stdint.h>
+#include <netinet/ip.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
@@ -9,7 +10,7 @@ struct isiCPUInfo;
 
 typedef int (*CPUECall)(struct isiCPUInfo *, struct timespec crun);
 
-typedef struct isiCPUInfo {
+struct isiCPUInfo {
 	int archtype;
 	int ctl;
 	size_t rate;
@@ -19,7 +20,13 @@ typedef struct isiCPUInfo {
 	CPUECall RunCycles;
 	struct timespec nrun;
 	size_t cycl;
-} CPUSlot, *pCPUSlot;
+};
+
+struct isiSession {
+	int sid;
+	int sfd;
+	struct sockaddr_in r_addr;
+};
 
 void isi_addtime(struct timespec *, size_t nsec);
 int HWM_TickAll(DCPU *, struct timespec, int fdnet, int msgin);

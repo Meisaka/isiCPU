@@ -56,6 +56,194 @@ int DCPU_interupt(DCPU* pr, uint16_t msg)
 	}
 }
 
+uint16_t DCPU_rram(uint16_t * ram, uint16_t a)
+{
+	return ram[a];
+}
+void DCPU_wram(uint16_t * ram, uint16_t a, uint16_t v)
+{
+	ram[a] = v;
+}
+
+// Write referenced B operand
+static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
+{
+	switch(p & 0x1f) {
+	case 0x00: pr->R[p & 0x7] = v; return;
+	case 0x01: pr->R[p & 0x7] = v; return;
+	case 0x02: pr->R[p & 0x7] = v; return;
+	case 0x03: pr->R[p & 0x7] = v; return;
+	case 0x04: pr->R[p & 0x7] = v; return;
+	case 0x05: pr->R[p & 0x7] = v; return;
+	case 0x06: pr->R[p & 0x7] = v; return;
+	case 0x07: pr->R[p & 0x7] = v; return;
+	case 0x08: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x09: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0a: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0b: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0c: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0d: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0e: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x10: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x11: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x12: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x13: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x14: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x15: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x16: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: DCPU_wram(ram, --(pr->SP), v); return;
+	case 0x19: DCPU_wram(ram, pr->SP, v); return;
+	case 0x1a: pr->cycl++; DCPU_wram(ram, pr->SP + DCPU_rram(ram,pr->PC++), v); return;
+	case 0x1b: pr->SP = v; return;
+	case 0x1c: pr->PC = v; return;
+	case 0x1d: pr->EX = v; return;
+	case 0x1e: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram,pr->PC++), v); return;
+	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
+	default:
+		fprintf(stderr, "DCPU: Bad write: %x\n", p);
+		// Should never actually happen
+		return ;
+	}
+}
+
+// re-Write referenced B operand
+static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
+{
+	switch(p & 0x1f) {
+	case 0x00: pr->R[p & 0x7] = v; return;
+	case 0x01: pr->R[p & 0x7] = v; return;
+	case 0x02: pr->R[p & 0x7] = v; return;
+	case 0x03: pr->R[p & 0x7] = v; return;
+	case 0x04: pr->R[p & 0x7] = v; return;
+	case 0x05: pr->R[p & 0x7] = v; return;
+	case 0x06: pr->R[p & 0x7] = v; return;
+	case 0x07: pr->R[p & 0x7] = v; return;
+	case 0x08: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x09: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0a: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0b: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0c: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0d: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0e: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x10: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x11: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x12: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x13: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x14: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x15: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x16: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: DCPU_wram(ram, pr->SP, v); return;
+	case 0x19: DCPU_wram(ram, pr->SP, v); return;
+	case 0x1a: pr->cycl++; DCPU_wram(ram, pr->SP + DCPU_rram(ram, pr->PC++), v); return;
+	case 0x1b: pr->SP = v; return;
+	case 0x1c: pr->PC = v; return;
+	case 0x1d: pr->EX = v; return;
+	case 0x1e: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++), v); return;
+	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
+	default:
+		fprintf(stderr, "DCPU: Bad write: %x\n", p);
+		// Should never actually happen
+		return;
+	}
+}
+
+
+// Dereference an A operand for ops
+static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
+{
+	switch(p) {
+	case 0x00: return pr->R[p & 0x7];
+	case 0x01: return pr->R[p & 0x7];
+	case 0x02: return pr->R[p & 0x7];
+	case 0x03: return pr->R[p & 0x7];
+	case 0x04: return pr->R[p & 0x7];
+	case 0x05: return pr->R[p & 0x7];
+	case 0x06: return pr->R[p & 0x7];
+	case 0x07: return pr->R[p & 0x7];
+	case 0x08: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x09: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0a: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0b: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0c: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0d: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0e: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x10: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x11: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x12: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x13: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x14: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x15: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x16: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x18: return DCPU_rram(ram, pr->SP++);
+	case 0x19: return DCPU_rram(ram, pr->SP);
+	case 0x1a: pr->cycl++; return DCPU_rram(ram, pr->SP + DCPU_rram(ram, pr->PC++));
+	case 0x1b: return pr->SP;
+	case 0x1c: return pr->PC;
+	case 0x1d: return pr->EX;
+	case 0x1e: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++));
+	case 0x1f: pr->cycl++; return DCPU_rram(ram, pr->PC++);
+	default:
+		return (uint16_t)(p - 0x21); /* literals */
+	}
+}
+
+// Dereference a B operand for R/W ops:
+static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
+{
+	switch(p) {
+	case 0x00: return pr->R[p & 0x7];
+	case 0x01: return pr->R[p & 0x7];
+	case 0x02: return pr->R[p & 0x7];
+	case 0x03: return pr->R[p & 0x7];
+	case 0x04: return pr->R[p & 0x7];
+	case 0x05: return pr->R[p & 0x7];
+	case 0x06: return pr->R[p & 0x7];
+	case 0x07: return pr->R[p & 0x7];
+	case 0x08: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x09: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0a: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0b: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0c: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0d: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0e: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x10: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x11: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x12: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x13: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x14: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x15: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x16: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x18: return DCPU_rram(ram, --(pr->SP));
+	case 0x19: return DCPU_rram(ram, pr->SP);
+	case 0x1a: pr->cycl++; return DCPU_rram(ram, pr->SP + DCPU_rram(ram, pr->PC));
+	case 0x1b: return pr->SP;
+	case 0x1c: return pr->PC;
+	case 0x1d: return pr->EX;
+	case 0x1e: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC));
+	case 0x1f: pr->cycl++; return DCPU_rram(ram, pr->PC);
+	default:
+		return (uint16_t)(p - 0x21); /* literals */
+	}
+}
+
+// Skip references
+static inline void DCPU_skipref(int p, DCPU* pr)
+{
+	if((p >= 0x10 && p < 0x18) || p == 0x1a || p == 0x1e || p == 0x1f) {
+		pr->PC++;
+		pr->cycl++;
+	}
+}
+
+
 static const int DCPU_cycles1[] =
 {
 	0, 1, 2, 2, 2, 2, 3, 3,
@@ -128,7 +316,7 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->MODE ^= DCPUMODE_EXTINT;
 	} else {
-		op = ram[(uint16_t)(pr->PC++)];
+		op = DCPU_rram(ram, pr->PC++);
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
 		op &= 0x001f;
@@ -444,227 +632,6 @@ ecpu:
 	} // while ccq
 	return 0;
 }
-
-// Skip references
-static inline void DCPU_skipref(int p, DCPU* pr)
-{
-	if((p >= 0x10 && p < 0x18) || p == 0x1a || p == 0x1e || p == 0x1f) {
-		pr->PC++;
-		pr->cycl++;
-	}
-}
-
-// Write referenced B operand
-static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
-{
-	if(p < 0x18) {
-		if(p & 0x0010) {
-			pr->cycl++;
-			ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ] = v;
-			return;
-		} else {
-			if(p & 0x8) {
-				ram[ pr->R[p & 0x7] ] = v;
-				return;
-			} else {
-				pr->R[p & 0x7] = v;
-				return;
-			}
-		}
-	} else {
-		if(p < 0x20) {
-			switch(p) {
-			case 0x18:
-				ram[--(pr->SP)] = v;
-				return;
-			case 0x19:
-				ram[pr->SP] = v;
-				return;
-			case 0x1a:
-				pr->cycl++;
-				ram[(uint16_t)(pr->SP + ram[pr->PC++]) ] = v;
-				return;
-			case 0x1b:
-				pr->SP = v;
-				return;
-			case 0x1c:
-				pr->PC = v;
-				return;
-			case 0x1d:
-				pr->EX = v;
-				return;
-			case 0x1e:
-				pr->cycl++;
-				ram[ ram[pr->PC++] ] = v;
-				return;
-			case 0x1f:
-				pr->cycl++;
-				// READ: ram[ pr->PC ];
-				pr->PC++;
-				// Fail silently
-				return;
-			default:
-				fprintf(stderr, "DCPU: Bad write: %x\n", p);
-				// Should never actually happen
-				return ;
-			}
-		}
-	}
-}
-
-// re-Write referenced B operand
-static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
-{
-	if(p < 0x18) {
-		if(p & 0x0010) {
-			pr->cycl++;
-			ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ] = v;
-			return;
-		} else {
-			if(p & 0x8) {
-				ram[ pr->R[p & 0x7] ] = v;
-				return;
-			} else {
-				pr->R[p & 0x7] = v;
-				return;
-			}
-		}
-	} else {
-		if(p < 0x20) {
-			switch(p) {
-			case 0x18:
-				ram[pr->SP] = v;
-				return;
-			case 0x19:
-				ram[pr->SP] = v;
-				return;
-			case 0x1a:
-				pr->cycl++;
-				ram[(uint16_t)(pr->SP + ram[pr->PC++]) ] = v;
-				return;
-			case 0x1b:
-				pr->SP = v;
-				return;
-			case 0x1c:
-				pr->PC = v;
-				return;
-			case 0x1d:
-				pr->EX = v;
-				return;
-			case 0x1e:
-				pr->cycl++;
-				ram[ ram[pr->PC++] ] = v;
-				return;
-			case 0x1f:
-				pr->cycl++;
-				// READ: ram[ pr->PC ];
-				pr->PC++;
-				// Fail silently
-				return;
-			default:
-				fprintf(stderr, "DCPU: Bad write: %x\n", p);
-				// Should never actually happen
-				return ;
-			}
-		}
-	}
-}
-
-
-// Dereference an A operand for ops
-static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
-{
-	if(p < 0x18) {
-		if(p & 0x0010) {
-			pr->cycl++;
-			return ram[ (uint16_t)(ram[pr->PC++] + pr->R[p & 0x7]) ];
-		} else {
-			if(p & 0x8) {
-				return ram[ pr->R[p & 0x7] ];
-			} else {
-				return pr->R[p & 0x7];
-			}
-		}
-	} else {
-		if(p < 0x20) {
-			switch(p) {
-			case 0x18:
-				return ram[pr->SP++];
-			case 0x19:
-				return ram[pr->SP];
-			case 0x1a:
-				pr->cycl++;
-				return ram[(uint16_t)(pr->SP + ram[pr->PC++]) ];
-			case 0x1b:
-				return pr->SP;
-			case 0x1c:
-				return pr->PC;
-			case 0x1d:
-				return pr->EX;
-			case 0x1e:
-				pr->cycl++;
-				return ram[ ram[pr->PC++] ];
-			case 0x1f:
-				pr->cycl++;
-				return ram[pr->PC++];
-			default:
-				// Should never actually happen
-				return 0;
-			}
-		} else {
-			return (uint16_t)(p - 0x21);
-			// literals
-		}
-	}
-}
-
-// Dereference a B operand for R/W ops:
-static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
-{
-	if(p < 0x18) {
-		if(p & 0x0010) {
-			pr->cycl++;
-			return ram[ (uint16_t)(ram[pr->PC] + pr->R[p & 0x7]) ];
-		} else {
-			if(p & 0x8) {
-				return ram[ pr->R[p & 0x7] ];
-			} else {
-				return pr->R[p & 0x7];
-			}
-		}
-	} else {
-		if(p < 0x20) {
-			switch(p) {
-			case 0x18:
-				return ram[--(pr->SP)];
-			case 0x19:
-				return ram[pr->SP];
-			case 0x1a:
-				pr->cycl++;
-				return ram[(uint16_t)(pr->SP + ram[pr->PC]) ];
-			case 0x1b:
-				return pr->SP;
-			case 0x1c:
-				return pr->PC;
-			case 0x1d:
-				return pr->EX;
-			case 0x1e:
-				pr->cycl++;
-				return ram[ ram[pr->PC] ];
-			case 0x1f:
-				pr->cycl++;
-				return ram[pr->PC];
-			default:
-				// Should never actually happen
-				return 0;
-			}
-		} else {
-			return (uint16_t)(p - 0x21);
-			// literals
-		}
-	}
-}
-
 
 static int DCPU_setonfire(DCPU * pr)
 {
