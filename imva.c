@@ -10,7 +10,7 @@ struct imva_nvstate {
 	int blink; /* bool blink state  */
 	uint32_t fgcolor;
 	uint32_t bgcolor;
-}
+};
 
 /* how we access memory */
 #define IMVA_RD(m,a)  (m[a])
@@ -90,8 +90,8 @@ int imva_raster(struct imva_nvstate *imva, uint16_t *ram, uint32_t *rgba, uint32
 	of = 0;
 	ova = imva->ovbase;
 	ovo = raddr + imva->ovoffset;
-	ove = raddr + (40*8); /* cell line words */
-	if(!ova) ovo = 0xffff;
+	ove = ovo + (40*8); /* cell line words */
+	if(!ova || imva->blink) ovo = raddr - 1;
 	for(y = 200; y--; of ^= 8) {
 		z = 0;
 		for(cell = 40; cell--; ) {
