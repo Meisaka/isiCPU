@@ -5,7 +5,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <signal.h>
@@ -17,8 +19,11 @@
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
 
 static struct timespec LTUTime;
-static int fdserver = 0;
+static struct isiSession ses;
 static int haltnow = 0;
+static int loadendian = 0;
+static int flagdbg;
+static char * binf;
 
 static int listenportnumber = 58704;
 
@@ -33,8 +38,6 @@ static int softcpumax = 1;
 static int softcpumin = 1;
 
 static struct isiCPUInfo allcpus[CPUSMAX];
-DCPU cpl[CPUSMAX];
-uint16_t mem[CPUSMAX][0x10000];
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
@@ -82,7 +85,7 @@ int loadtxtfile(FILE* infl, char** txtptr, int * newsize)
 
 int makewaitserver()
 {
-	int fdsvr, i;
+	int fdsvr, fdn, i;
 	struct sockaddr_in lipn;
 	struct sockaddr_in ripn;
 	socklen_t rin;
@@ -111,50 +114,67 @@ int makewaitserver()
 	}
 	fprintf(stderr, "Listening on port %d ...\n", listenportnumber);
 	rin = sizeof(ripn);
-	fdserver = accept(fdsvr, (struct sockaddr*)&ripn, &rin);
-	if(fdserver < 0) {
+	fdn = accept(fdsvr, (struct sockaddr*)&ripn, &rin);
+	if(fdn < 0) {
 		perror("accept");
 		close(fdsvr);
-		fdserver = 0;
+		fdn = 0;
 		return -1;
 	}
 	i = 1;
-	if( setsockopt(fdserver, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(int)) < 0) {
+	if( setsockopt(fdn, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(int)) < 0) {
 		perror("set'opt");
 		close(fdsvr);
-		close(fdserver);
+		close(fdn);
 		return -1;
 	}
-	if( fcntl(fdserver, F_SETFL, O_NONBLOCK) < 0) {
+	if( fcntl(fdn, F_SETFL, O_NONBLOCK) < 0) {
 		perror("fcntl");
 		close(fdsvr);
-		close(fdserver);
+		close(fdn);
 		return -1;
 	}
+	ses.sfd = fdn;
+	memcpy(&ses.r_addr, &ripn, sizeof(struct sockaddr_in));
 	close(fdsvr);
 	return 0;
 }
 
-int loadbinfile(const char* path, int endian, unsigned char * mem)
+int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize)
 {
-	int fd, i, f;
-	char bf[4];
+	int fd, i;
+	struct stat fdi;
+	size_t f, o;
+	uint16_t eswp;
+	uint8_t *mem;
 	fd = open(path, O_RDONLY);
 	if(fd < 0) { perror("open"); return -5; }
-
-	f = 0;
-	while((i = read(fd, bf, 2)) > 0) {
-		if(f < 0x20000) {
-			if(endian) {
-			mem[f++] = bf[1];
-			mem[f++] = bf[0];
-			} else {
-			mem[f++] = bf[0];
-			mem[f++] = bf[1];
-			}
-		}
+	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
+	f = fdi.st_size & (~1);
+	if(f > 0x20000) f = 0x20000;
+	mem = (uint8_t*)malloc(f);
+	if(!mem) { close(fd); return -5; }
+	o = 0;
+	while((i = read(fd, mem+o, f - o) > 0) && o < f) {
+		o += i;
+	}
+	if( i < 0 ) {
+		perror("read");
+		close(fd);
+		return -1;
 	}
 	close(fd);
+
+	o = 0;
+	if(endian) {
+		while(o < f) {
+			eswp = *(uint16_t*)(mem+o);
+			*(uint16_t*)(mem+o) = (eswp >> 8) | (eswp << 8);
+			o += 2;
+		}
+	}
+	*nmem = mem;
+	if(nsize) *nsize = f;
 	return 0;
 }
 
@@ -201,9 +221,9 @@ static const char * DIAG_L2 =
 
 void showdisasm_dcpu(const struct isiCPUInfo *info)
 {
-	const DCPU * cpu = (const DCPU*)info->cpustate;
+	const DCPU * cpu = (const DCPU*)info->rvstate;
 	uint16_t ma = cpu->PC;
-	uint16_t m = (cpu->memptr)[ma++];
+	uint16_t m = (cpu->memptr)->ram[ma++];
 	int op = m & 0x1f;
 	int ob = (m >> 5) & 0x1f;
 	int oa = (m >> 10) & 0x3f;
@@ -214,7 +234,7 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 		lu |= 1;
 		lua = cpu->R[oa - 8];
 	} else if((oa >= 16 && oa < 24) || oa == 26 || oa == 30 || oa == 31) {
-		nwa = (cpu->memptr)[ma++];
+		nwa = (cpu->memptr)->ram[ma++];
 		if(oa != 31) lu |= 1;
 		if(oa >= 16 && oa < 24) {
 			lua = cpu->R[oa - 16] + nwa;
@@ -231,7 +251,7 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 			lu |= 2;
 			lub = cpu->R[ob - 8];
 		} else if((ob >= 16 && ob < 24) || ob == 26 || ob == 30 || ob == 31) {
-			nwb = (cpu->memptr)[ma++];
+			nwb = (cpu->memptr)->ram[ma++];
 			if(ob != 31) lu |= 2;
 			if(ob >= 16 && ob < 24) {
 				lub = cpu->R[ob - 16] + nwb;
@@ -254,17 +274,17 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 		fprintf(stderr, DCPUP[oa], nwa);
 	}
 	if(lu & 2) {
-		fprintf(stderr, "  b: %04x [%04x]", lub, (cpu->memptr)[lub]);
+		fprintf(stderr, "  b: %04x [%04x]", lub, cpu->memptr->ram[lub]);
 	}
 	if(lu & 1) {
-		fprintf(stderr, "  a: %04x [%04x]", lua, (cpu->memptr)[lua]);
+		fprintf(stderr, "  a: %04x [%04x]", lua, cpu->memptr->ram[lua]);
 	}
 	fprintf(stderr, "\n");
 }
 
 void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
 {
-	const DCPU * cpu = (const DCPU*)info->cpustate;
+	const DCPU * cpu = (const DCPU*)info->rvstate;
 	const char *diagt;
 	diagt = fmt ? DIAG_L2 : DIAG_L4;
 	fprintf(stderr, diagt,
@@ -307,6 +327,50 @@ void isi_setrate(struct isiCPUInfo *info, size_t rate) {
 	}
 }
 
+int isi_createdev(struct isiInfo **ndev)
+{
+	if(!ndev) return -1;
+	struct isiInfo *info;
+	info = (struct isiInfo*)malloc(sizeof(struct isiInfo));
+	if(!info) return -5;
+	memset(info, 0, sizeof(struct isiInfo));
+	*ndev = info;
+	return 0;
+}
+
+int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
+{
+	struct isiInfo *bus, *ninfo;
+	isi_setrate(cpu, 100000); // 100kHz
+	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
+	cpu->mem = malloc(sizeof(struct memory64x16));
+	DCPU_init(cpu, (isiram16)cpu->mem);
+	isi_createdev(&bus);
+	HWM_CreateBus(bus);
+	cpu->Attach((struct isiInfo*)cpu, bus);
+	isi_createdev(&ninfo);
+	HWM_CreateDevice(ninfo, "nya_lem");
+	bus->Attach(bus, ninfo);
+	isi_createdev(&ninfo);
+	HWM_CreateDevice(ninfo, "keyboard");
+	bus->Attach(bus, ninfo);
+	uint8_t *rom;
+	uint32_t rsize = 0;
+	if(binf) {
+		loadbinfile(binf, loadendian, &rom, &rsize);
+		char *ist;
+		asprintf(&ist, "rom:size=%u", rsize);
+		isi_createdev(&ninfo);
+		HWM_CreateDevice(ninfo, ist);
+		memcpy(((char*)ninfo->rvstate)+2, rom, rsize);
+		*((uint16_t*)ninfo->rvstate) = rsize;
+		bus->Attach(bus, ninfo);
+		free(ist);
+		free(rom);
+	}
+	return 0;
+}
+
 struct stats {
 	int quanta;
 	int cpusched;
@@ -314,9 +378,7 @@ struct stats {
 
 int main(int argc, char**argv, char**envp)
 {
-	char * binf;
 	int rqrun;
-	int endian;
 	int ssvr;
 	int cux;
 	uintptr_t gccq = 0;
@@ -326,20 +388,17 @@ int main(int argc, char**argv, char**envp)
 	struct stats sts = {0, };
 	int paddlimit = 0;
 	int premlimit = 0;
-	int dbg;
 
 	struct timeval ltv;
 	fd_set fds;
 	char cc;
 	char ccv[10];
 
-	dbg = 0;
+	flagdbg = 0;
 	rqrun = 0;
-	endian = 0;
 	ssvr = 0;
 	haltnow= 0;
 	binf = NULL;
-	memset(mem, 0, sizeof(short)*0x10000);
 	memset(allcpus, 0, sizeof(allcpus));
 	int i,k;
 
@@ -371,18 +430,18 @@ int main(int argc, char**argv, char**envp)
 						}
 						break;
 					case 'e':
-						endian = 2;
+						loadendian = 2;
 						break;
 					case 's':
 						ssvr = 1;
 						break;
 					case 'D':
-						dbg = 1;
+						flagdbg = 1;
 						break;
 					case 'B':
 						k = -1;
 						if(i+1<argc) {
-							binf = argv[++i];
+							binf = strdup(argv[++i]);
 						}
 						break;
 					}
@@ -406,21 +465,7 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun == 1) { // normal operation /////////////////////////
 
 		for(cux = 0; cux < softcpumax; cux++) {
-			allcpus[cux].cpustate = &cpl[cux];
-			isi_setrate(allcpus+cux, 100000); // 100kHz
-			allcpus[cux].ctl = dbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
-			DCPU_init(allcpus+cux, mem[cux]);
-			HWM_InitLoadout(allcpus[cux].cpustate, 4);
-			HWM_DeviceAdd(allcpus[cux].cpustate, 2);
-			HWM_DeviceAdd(allcpus[cux].cpustate, 0);
-			HWM_DeviceAdd(allcpus[cux].cpustate, 1);
-			HWM_DeviceAdd(allcpus[cux].cpustate, 5);
-			HWM_InitAll(allcpus[cux].cpustate);
-			DCPU_sethwqcallback(allcpus[cux].cpustate, HWM_Query);
-			DCPU_sethwicallback(allcpus[cux].cpustate, HWM_HWI);
-			if(binf) {
-				loadbinfile(binf, endian, (unsigned char*)mem[cux]);
-			}
+			isi_addcpu(allcpus+cux, "");
 		}
 		if(ssvr) {
 			makewaitserver();
@@ -431,6 +476,7 @@ int main(int argc, char**argv, char**envp)
 
 		for(cux = 0; cux < numberofcpus; cux++) {
 			fetchtime(&allcpus[cux].nrun);
+			allcpus[cux].Reset((struct isiInfo*)(allcpus+cux));
 		}
 		fetchtime(&LTUTime);
 		lucycles = 0; // how many cycles ran (debugging)
@@ -451,7 +497,7 @@ int main(int argc, char**argv, char**envp)
 				if(tcc < 20) tcc = 20;
 				while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
 					sts.quanta++;
-					ccpu->RunCycles(ccpu, CRun);
+					ccpu->RunCycles((struct isiInfo*)ccpu, &ses, CRun);
 					//TODO some hardware may need to work at the same time
 					lucycles += ccpu->cycl;
 					if((ccpu->ctl & ISICTL_DEBUG) && (ccpu->cycl)) {
@@ -465,14 +511,16 @@ int main(int argc, char**argv, char**envp)
 				sts.cpusched++;
 				fetchtime(&CRun);
 
-				HWM_TickAll(ccpu->cpustate, CRun, cux == 0 ? fdserver : 0, 0);
+				if(ccpu->outdev && ccpu->outdev->RunCycles) {
+					ccpu->outdev->RunCycles(ccpu->outdev, &ses, CRun);
+				}
 			}
 
 			fetchtime(&CRun);
 			if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
 				double clkdelta;
 				float clkrate;
-				if(!dbg) showdiag_dcpu(&allcpus[0], 0);
+				if(!flagdbg) showdiag_dcpu(&allcpus[0], 0);
 				clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
@@ -481,7 +529,7 @@ int main(int argc, char**argv, char**envp)
 						clkdelta, numberofcpus, clkrate, gccq,
 						sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
 						);
-				if(!dbg) showdiag_up(4);
+				if(!flagdbg) showdiag_up(4);
 				fetchtime(&LTUTime);
 				if(gccq >= sts.cpusched / numberofcpus ) {
 					if(numberofcpus > softcpumin) {
@@ -535,12 +583,9 @@ int main(int argc, char**argv, char**envp)
 								}
 								t = (t << 4) | (ti & 15);
 							}
-							ti = mem[0][t];
+							ti = ((isiram16)allcpus[0].mem)->ram[t];
 							fprintf(stderr, "READ %04x:%04x\n", t, ti);
 						}
-						break;
-					case 'l':
-						HWM_TickAll(&cpl[0], CRun, fdserver,0x3400);
 						break;
 					case 'x':
 						haltnow = 1;
@@ -550,7 +595,7 @@ int main(int argc, char**argv, char**envp)
 					}
 				}
 			}
-			if(!dbg) {
+			if(!flagdbg) {
 				cux++;
 				if(cux > numberofcpus - 1) {
 					cux = 0;
@@ -564,9 +609,8 @@ int main(int argc, char**argv, char**envp)
 				break;
 			}
 		}
-		HWM_FreeAll(&cpl[0]);
-		shutdown(fdserver, SHUT_RDWR);
-		close(fdserver);
+		shutdown(ses.sfd, SHUT_RDWR);
+		close(ses.sfd);
 	}
 	printf("\n");
 	return 0;

@@ -1,33 +1,54 @@
 
 #include "dcpu.h"
+#include "dcpuhw.h"
 #include "opcode.h"
 #include "cputypes.h"
 #include <stdio.h>
+#include <string.h>
 
 #define DCPUMODE_SKIP 1
 #define DCPUMODE_INTQ 2
 #define DCPUMODE_PROCINT 4
 #define DCPUMODE_EXTINT 8
 
-static inline void DCPU_reref(int, uint16_t, DCPU*, uint16_t*);
-static inline void DCPU_rerefB(int, uint16_t, DCPU*, uint16_t*);
-static inline uint16_t DCPU_deref(int , DCPU* , uint16_t * );
-static inline uint16_t DCPU_derefB(int , DCPU* , uint16_t * );
-static int DCPU_setonfire(DCPU * );
-static inline void DCPU_skipref(int , DCPU* );
-static uint16_t LPC;
+static inline void DCPU_reref(int, uint16_t, DCPU *, isiram16);
+static inline void DCPU_rerefB(int, uint16_t, DCPU *, isiram16);
+static inline uint16_t DCPU_deref(int, DCPU *, isiram16);
+static inline uint16_t DCPU_derefB(int, DCPU *, isiram16);
+static int DCPU_setonfire(DCPU *);
+static inline void DCPU_skipref(int, DCPU *);
+static int DCPU_reset(struct isiInfo *);
+static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, uint16_t *, struct timespec);
+static int DCPU_run(struct isiInfo *, struct isiSession *, struct timespec);
 
-void DCPU_init(struct isiCPUInfo *info, uint16_t *ram)
+static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 {
-	DCPU* pr = (DCPU*)info->cpustate;
-	info->archtype = ARCH_DCPU;
-	info->RunCycles = DCPU_run;
+	if(!info || !dev) return -1;
+	if(dev->id.objtype != ARCH_DCPUBUS) return -1;
+	info->MsgOut = dev->MsgIn;
+	info->outdev = dev;
+	dev->outdev = info;
+	return 0;
+}
+
+void DCPU_init(struct isiCPUInfo *info, isiram16 ram)
+{
+	DCPU* pr;
+	pr = (DCPU*)malloc(sizeof(DCPU));
 	memset(pr, 0, sizeof(DCPU));
+	info->rvstate = pr;
+	info->id.objtype = ARCH_DCPU;
+	info->RunCycles = DCPU_run;
+	info->Reset = DCPU_reset;
+	info->MsgIn = DCPU_interrupt;
+	info->Attach = DCPU_AttachBus;
 	pr->memptr = ram;
 }
 
-void DCPU_reset(DCPU* pr)
+static int DCPU_reset(struct isiInfo *info)
 {
+	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
+	DCPU *pr; pr = (DCPU*)l_info->rvstate;
 	int i;
 	for(i = 0; i < 8; i++)
 	{
@@ -40,13 +61,19 @@ void DCPU_reset(DCPU* pr)
 	pr->MODE = 0;
 	pr->cycl = 0;
 	pr->IQC = 0;
+	pr->msg = 0;
+	if((info->MsgOut) && (info->MsgOut(info->outdev, info, &pr->msg, info->nrun))) {
+		pr->hwcount = pr->dai;
+	}
+	return 0;
 }
 
-int DCPU_interupt(DCPU* pr, uint16_t msg)
+static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
+	DCPU *pr; pr = (DCPU*)info->rvstate;
 	if(pr->IA) {
 		if(pr->IQC < 256) {
-			pr->IQU[pr->IQC++] = msg;
+			pr->IQU[pr->IQC++] = *msg;
 			return 1;
 		} else {
 			return DCPU_setonfire(pr);
@@ -56,42 +83,46 @@ int DCPU_interupt(DCPU* pr, uint16_t msg)
 	}
 }
 
-uint16_t DCPU_rram(uint16_t * ram, uint16_t a)
+uint16_t DCPU_rram(isiram16 ram, uint16_t a)
 {
-	return ram[a];
+	return ram->ram[a];
 }
-void DCPU_wram(uint16_t * ram, uint16_t a, uint16_t v)
+void DCPU_wram(isiram16 ram, uint16_t a, uint16_t v)
 {
-	ram[a] = v;
+	if(ram->ram[a] ^ v) {
+		ram->ctl[a] |= 1;
+		if(ram->ctl[a] & 2) ram->info |= 1;
+	}
+	if(!(ram->ctl[a] & 4)) ram->ram[a] = v;
 }
 
 // Write referenced B operand
-static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
+static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, isiram16 ram)
 {
 	switch(p & 0x1f) {
-	case 0x00: pr->R[p & 0x7] = v; return;
-	case 0x01: pr->R[p & 0x7] = v; return;
-	case 0x02: pr->R[p & 0x7] = v; return;
-	case 0x03: pr->R[p & 0x7] = v; return;
-	case 0x04: pr->R[p & 0x7] = v; return;
-	case 0x05: pr->R[p & 0x7] = v; return;
-	case 0x06: pr->R[p & 0x7] = v; return;
+	case 0x00:
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+	case 0x05:
+	case 0x06:
 	case 0x07: pr->R[p & 0x7] = v; return;
-	case 0x08: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x09: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0a: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0b: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0c: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0d: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0e: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x08:
+	case 0x09:
+	case 0x0a:
+	case 0x0b:
+	case 0x0c:
+	case 0x0d:
+	case 0x0e:
 	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x10: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x11: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x12: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x13: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x14: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x15: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x16: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x10:
+	case 0x11:
+	case 0x12:
+	case 0x13:
+	case 0x14:
+	case 0x15:
+	case 0x16:
 	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
 	case 0x18: DCPU_wram(ram, --(pr->SP), v); return;
 	case 0x19: DCPU_wram(ram, pr->SP, v); return;
@@ -109,32 +140,32 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 }
 
 // re-Write referenced B operand
-static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
+static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, isiram16 ram)
 {
 	switch(p & 0x1f) {
-	case 0x00: pr->R[p & 0x7] = v; return;
-	case 0x01: pr->R[p & 0x7] = v; return;
-	case 0x02: pr->R[p & 0x7] = v; return;
-	case 0x03: pr->R[p & 0x7] = v; return;
-	case 0x04: pr->R[p & 0x7] = v; return;
-	case 0x05: pr->R[p & 0x7] = v; return;
-	case 0x06: pr->R[p & 0x7] = v; return;
+	case 0x00:
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+	case 0x05:
+	case 0x06:
 	case 0x07: pr->R[p & 0x7] = v; return;
-	case 0x08: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x09: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0a: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0b: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0c: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0d: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x0e: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x08:
+	case 0x09:
+	case 0x0a:
+	case 0x0b:
+	case 0x0c:
+	case 0x0d:
+	case 0x0e:
 	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
-	case 0x10: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x11: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x12: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x13: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x14: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x15: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x16: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x10:
+	case 0x11:
+	case 0x12:
+	case 0x13:
+	case 0x14:
+	case 0x15:
+	case 0x16:
 	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
 	case 0x18: DCPU_wram(ram, pr->SP, v); return;
 	case 0x19: DCPU_wram(ram, pr->SP, v); return;
@@ -153,32 +184,32 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, uint16_t * ram)
 
 
 // Dereference an A operand for ops
-static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
+static inline uint16_t DCPU_deref(int p, DCPU* pr, isiram16 ram)
 {
 	switch(p) {
-	case 0x00: return pr->R[p & 0x7];
-	case 0x01: return pr->R[p & 0x7];
-	case 0x02: return pr->R[p & 0x7];
-	case 0x03: return pr->R[p & 0x7];
-	case 0x04: return pr->R[p & 0x7];
-	case 0x05: return pr->R[p & 0x7];
-	case 0x06: return pr->R[p & 0x7];
+	case 0x00:
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+	case 0x05:
+	case 0x06:
 	case 0x07: return pr->R[p & 0x7];
-	case 0x08: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x09: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0a: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0b: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0c: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0d: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0e: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x08:
+	case 0x09:
+	case 0x0a:
+	case 0x0b:
+	case 0x0c:
+	case 0x0d:
+	case 0x0e:
 	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x10: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x11: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x12: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x13: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x14: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x15: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x16: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x10:
+	case 0x11:
+	case 0x12:
+	case 0x13:
+	case 0x14:
+	case 0x15:
+	case 0x16:
 	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
 	case 0x18: return DCPU_rram(ram, pr->SP++);
 	case 0x19: return DCPU_rram(ram, pr->SP);
@@ -194,32 +225,32 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, uint16_t * ram)
 }
 
 // Dereference a B operand for R/W ops:
-static inline uint16_t DCPU_derefB(int p, DCPU* pr, uint16_t * ram)
+static inline uint16_t DCPU_derefB(int p, DCPU* pr, isiram16 ram)
 {
 	switch(p) {
-	case 0x00: return pr->R[p & 0x7];
-	case 0x01: return pr->R[p & 0x7];
-	case 0x02: return pr->R[p & 0x7];
-	case 0x03: return pr->R[p & 0x7];
-	case 0x04: return pr->R[p & 0x7];
-	case 0x05: return pr->R[p & 0x7];
-	case 0x06: return pr->R[p & 0x7];
+	case 0x00:
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+	case 0x05:
+	case 0x06:
 	case 0x07: return pr->R[p & 0x7];
-	case 0x08: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x09: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0a: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0b: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0c: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0d: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x0e: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x08:
+	case 0x09:
+	case 0x0a:
+	case 0x0b:
+	case 0x0c:
+	case 0x0d:
+	case 0x0e:
 	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
-	case 0x10: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x11: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x12: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x13: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x14: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x15: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x16: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x10:
+	case 0x11:
+	case 0x12:
+	case 0x13:
+	case 0x14:
+	case 0x15:
+	case 0x16:
 	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
 	case 0x18: return DCPU_rram(ram, --(pr->SP));
 	case 0x19: return DCPU_rram(ram, pr->SP);
@@ -275,10 +306,11 @@ static const int DCPU_dwtbl[] =
 	0, 0, 1, 1, 0, 0, 0, 0
 };
 
-int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
+static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timespec crun)
 {
-	DCPU *pr = (DCPU*)l_info->cpustate;
-	uint16_t *ram = pr->memptr;
+	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
+	DCPU *pr = (DCPU*)l_info->rvstate;
+	isiram16 ram = pr->memptr;
 	size_t cycl = 0;
 	int op;
 	int oa;
@@ -349,7 +381,13 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 				// 0x08 - 0x0f Interupts
 			case SOP_INT:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				DCPU_interupt(pr, alu1.u);
+				if(pr->IA) {
+					if(pr->IQC < 256) {
+						pr->IQU[pr->IQC++] = alu1.u;
+					} else {
+						/* set on fire */
+					}
+				}
 				break;
 			case SOP_IAG:
 				DCPU_reref(oa, pr->IA, pr, ram);
@@ -378,7 +416,9 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 				break;
 			case SOP_HWQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				if((pr->control & 1) && (pr->hwqaf) && (op = pr->hwqaf(pr->R, alu1.u, pr))) {
+				pr->msg = 1;
+				pr->dai = alu1.u;
+				if((info->MsgOut) && (info->MsgOut(info->outdev, info, &pr->msg, info->nrun) == HWQ_SUCCESS)) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -390,7 +430,9 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 			case SOP_HWI:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				//pr->MODE |= DCPUMODE_EXTINT;
-				if((pr->control & 2) && (pr->hwiaf) && (op = pr->hwiaf(pr->R, alu1.u, pr))) {
+				pr->msg = 2;
+				pr->dai = alu1.u;
+				if((info->MsgOut) && (op = info->MsgOut(info->outdev, info, &pr->msg, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
@@ -567,7 +609,7 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
 				break;
 			case 0x19: // UKN
-				fprintf(stderr, "DCPU: Invalid op: (%04x->%04x) %x\n", LPC, pr->PC, op);
+				fprintf(stderr, "DCPU: Invalid op: (%04x) %x\n", pr->PC, op);
 				break;
 			case OP_ADX: // ADX (R/W)
 				alu2.ui = alu2.u + alu1.u + pr->EX;
@@ -605,7 +647,6 @@ int DCPU_run(struct isiCPUInfo * l_info, struct timespec crun)
 			}
 		}
 	}
-	LPC = pr->PC;
 	if(!(pr->MODE & (DCPUMODE_SKIP|DCPUMODE_INTQ)) && pr->IQC > 0) {
 		DCPU_reref(0x18, pr->PC, pr, ram);
 		DCPU_reref(0x18, pr->R[0], pr, ram);
@@ -636,33 +677,7 @@ ecpu:
 static int DCPU_setonfire(DCPU * pr)
 {
 	pr->MODE = BURNING;
-	fprintf(stderr, "DCPU-MODULE: ur dcpu is on fire foo...\n");
+	fprintf(stderr, "DCPU: set on fire!\n");
 	return HUGE_FIREBALL;
-}
-
-int DCPU_sethwcount(DCPU* pr, uint16_t count)
-{
-	pr->hwcount = count;
-	return 0;
-}
-
-int DCPU_sethwqcallback(DCPU* pr, DCPUext_query efc)
-{
-	if(efc) {
-		pr->hwqaf = efc;
-		pr->control |= 1;
-		return 1; 
-	}
-	return 0;
-}
-
-int DCPU_sethwicallback(DCPU* pr, DCPUext_interupt efc)
-{
-	if(efc) {
-		pr->hwiaf = efc;
-		pr->control |= 2;
-		return 1; 
-	}
-	return 0;
 }
 

@@ -43,84 +43,84 @@ static unsigned short nya_defpal[] = {
 0x0f55,0x0f5f,0x0ff5,0x0fff
 };
 
-struct NyaLEM {
-	struct timespec lupdate;
+struct NyaLEM_rv {
 	unsigned short dspmem;
 	unsigned short fontmem;
 	unsigned short palmem;
 	unsigned short border;
 	unsigned short version;
+};
+struct NyaLEM_sv {
 	unsigned short cachepal[16];
 	unsigned short cachefont[256];
-	unsigned short cachedisp[384]; // Used for sending delta values
+	unsigned short cachedisp[384];
 };
 
-static int Nya_LEM_voiddisp(struct NyaLEM *dsp, struct systemhwstate *isi);
+static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struct memory64x16 *mem);
 
-int Nya_LEM_SIZE()
+int Nya_LEM_SIZE(int t, const char * cfg)
 {
-	return sizeof(struct NyaLEM);
+	switch(t) {
+	case 0: return sizeof(struct NyaLEM_rv);
+	case 1: return sizeof(struct NyaLEM_sv);
+	default: return 0;
+	}
 }
 
-int Nya_LEM_Init(struct NyaLEM* dsp, int i)
+int Nya_LEM_Init(struct isiInfo *info, const char *cfg)
 {
+	struct NyaLEM_rv* dsp;
+	dsp = (struct NyaLEM_rv*)info->rvstate;
 	if(!dsp) return -1;
 	dsp->dspmem = 0;
 	dsp->fontmem = 0;
 	dsp->version = 0x1802;
-	dsp->lupdate.tv_sec = 0;
-	dsp->lupdate.tv_nsec = 0;
 	return 0;
 }
 
-int Nya_LEM_Query(void * hwd, struct systemhwstate * isi)
+int Nya_LEM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
 {
-	struct NyaLEM* dsp;
-	if(!hwd) return -1;
-	dsp = (struct NyaLEM*)hwd;
-	fprintf(stderr, "NYA LEM - HWQ\n");
-	isi->regs[0] = 0xf615;
-	isi->regs[1] = 0x7349;
-	dsp->version = 0x1802;
-	isi->regs[2] = dsp->version;
-	isi->regs[3] = NYAE_LO;
-	isi->regs[4] = NYAE_HI;
 	return HWQ_SUCCESS;
 }
 
-int Nya_LEM_HWI(void * hwd, struct systemhwstate * isi)
+int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
 {
-	struct NyaLEM* dsp;
+	struct isiCPUInfo *l_info = (struct isiCPUInfo*)src;
+	struct NyaLEM_rv* dsp;
+	struct NyaLEM_sv* dspv;
+	struct memory64x16 *mem;
 	unsigned short dma;
 	int i;
-	if(!hwd) return -1;
-	dsp = (struct NyaLEM*)hwd;
+	if(!info) return -1;
+	dsp = (struct NyaLEM_rv*)info->rvstate;
+	dspv = (struct NyaLEM_sv*)info->svstate;
+	mem = (struct memory64x16*)l_info->mem;
 	// TODO - this
 	//fprintf(stderr, "NYALEM: HWI %04x \n", isi->regs[0]);
-	switch(isi->regs[0]) {
+	switch(msg[0]) {
 	case 0:
-		dsp->dspmem = isi->regs[1];
+		dsp->dspmem = msg[1];
 		//fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
-		Nya_LEM_voiddisp(dsp,isi);
+		Nya_LEM_voiddisp(dsp, dspv, mem);
 		break;
 	case 1: // Map Font
-		dsp->fontmem = isi->regs[1];
+		dsp->fontmem = msg[1];
 		fprintf(stderr, "NYALEM: Font set to %04x \n", dsp->fontmem);
 		break;
 	case 2: // Map Palette
-		dsp->palmem = isi->regs[1];
+		dsp->palmem = msg[1];
 		fprintf(stderr, "NYALEM: Palette set to %04x \n", dsp->palmem);
 		break;
 	case 3: // Set border
-		dsp->border = isi->regs[1];
+		dsp->border = msg[1];
 		break;
 	case 4: // Mem Dump Font
-		dma = isi->regs[1];
-		for(i = 0; i < 256; i++) isi->mem[dma++] = nya_deffont[i];
+		dma = msg[1];
+		for(i = 0; i < 256; i++) mem->ram[dma++] = nya_deffont[i];
 		return 256;
 	case 5: // Mem Dump Pal
-		dma = isi->regs[1];
-		for(i = 0; i < 16; i++) isi->mem[dma++] = nya_defpal[i];
+		dma = msg[1];
+		for(i = 0; i < 16; i++) mem->ram[dma++] = nya_defpal[i];
 		return 16;
 	default:
 		break;
@@ -128,47 +128,50 @@ int Nya_LEM_HWI(void * hwd, struct systemhwstate * isi)
 	return 0;
 }
 
-static int Nya_LEM_voiddisp(struct NyaLEM *dsp, struct systemhwstate *isi)
+static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struct memory64x16 *mem)
 {
 	int dsl;
 	uint16_t dsa;
 	if(dsp->dspmem) {
 		dsa = dsp->dspmem;
 		for(dsl = 0; dsl < 384; dsl++) {
-			dsp->cachedisp[dsl] = isi->mem[dsa + dsl] ^ 1;
+			dspv->cachedisp[dsl] = mem->ram[dsa + dsl] ^ 1;
 		}
 	}
 	return 0;
 }
 
-int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
+int Nya_LEM_Tick(struct isiInfo *info, struct systemhwstate * isi, struct timespec crun)
 {
-	struct NyaLEM* dsp;
+	struct NyaLEM_rv* dsp;
+	struct NyaLEM_sv* dspv;
+	struct memory64x16 *mem;
 	uint16_t dsa;
 	int dsl, dur;
 	uint16_t ddb[400];
 	int ddi, dss;
-	if(!hwd) return -1;
-	dsp = (struct NyaLEM*)hwd;
+	if(!info) return -1;
+	dsp = (struct NyaLEM_rv*)info->rvstate;
+	dspv = (struct NyaLEM_sv*)info->svstate;
+	mem = isi->mem;
 	if(isi->msg == 0x3400) {
 		fprintf(stderr, "M: %04x \n", dsp->dspmem);
 		for(dur = 0; dur < 384; dur++) {
-			fprintf(stderr,"%04x ",dsp->cachedisp[dur]);
+			fprintf(stderr,"%04x ",dspv->cachedisp[dur]);
 			if(dur % 16 == 15) fprintf(stderr,"\n");
 		}
 	}
-	if(!isi->netwfd) return 0; // quit if no network
-	if(dsp->lupdate.tv_sec) {
-		if(isi->crun.tv_sec < dsp->lupdate.tv_sec
-			|| isi->crun.tv_nsec < dsp->lupdate.tv_nsec) {
+	if(!isi->net->sfd) return 0; // quit if no network
+	if(info->nrun.tv_sec) {
+		if(crun.tv_sec < info->nrun.tv_sec
+			|| crun.tv_nsec < info->nrun.tv_nsec) {
 			return 0;
 		}
-		isi_addtime(&dsp->lupdate, 50000000);
 	} else {
-		dsp->lupdate.tv_sec = isi->crun.tv_sec;
-		dsp->lupdate.tv_nsec = isi->crun.tv_nsec;
-		isi_addtime(&dsp->lupdate, 50000000);
+		info->nrun.tv_sec = crun.tv_sec;
+		info->nrun.tv_nsec = crun.tv_nsec;
 	}
+	isi_addtime(&info->nrun, 50000000);
 	if(dsp->dspmem) {
 		dsa = dsp->dspmem;
 		dur = 0;
@@ -180,9 +183,9 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 		// Simple display delta protocol
 		for(dsl = 0; dsl < 384; dsl++) {
 			dss = dsl;
-			while(dsl < 384 && isi->mem[dsa+dsl] != dsp->cachedisp[dsl]) {
-				ddb[5+ddi] = isi->mem[dsa+dsl];
-				dsp->cachedisp[dsl] = isi->mem[dsa+dsl];
+			while(dsl < 384 && mem->ram[dsa+dsl] != dspv->cachedisp[dsl]) {
+				ddb[5+ddi] = mem->ram[dsa+dsl];
+				dspv->cachedisp[dsl] = mem->ram[dsa+dsl];
 				ddi++; dsl++;
 			}
 			if(ddi) {
@@ -190,8 +193,8 @@ int Nya_LEM_Tick(void * hwd, struct systemhwstate * isi)
 				ddb[2] = 0; // ID
 				ddb[3] = dss; // address
 				ddb[4] = ddi; // length (words)
-				if(isi->netwfd) {
-					write(isi->netwfd, (char*)ddb, 10+(ddi*2));
+				if(isi->net) {
+					write(isi->net->sfd, (char*)ddb, 10+(ddi*2));
 				}
 				ddi = 0;
 			}

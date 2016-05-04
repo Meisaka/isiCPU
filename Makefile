@@ -1,21 +1,35 @@
 CC=gcc -g 
-CFLAGS += -O2 -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
+CFLAGS += -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
+
+# required in GNU/Linux for asprintf
+CFLAGS += -D_GNU_SOURCE
+
+cctest : CC=g++ -g
+cctest : CFLAGS=-O2 -Wall -D_POSIX_C_SOURCE=200809L
 
 SRCFILES=$(shell find . -name '*.c')
+INCFILES=$(shell find . -name '*.h')
 THEFILES=$(basename $(SRCFILES))
 THEOBJ=$(addsuffix .o,$(THEFILES))
 
 .PHONY: all clean
 
 all: isicpu
+cctest: all
 
 clean:
-	@rm -v isicpu
-	@rm -v ${THEOBJ}
+	@rm -fv isicpu
+	@rm -fv ${THEOBJ}
 
-isicpu: ${THEOBJ} Makefile
+depends: ${SRCFILES} ${INCFILES} Makefile
+	@rm -fv depends
+	@for i in ${SRCFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i)" >> depends ; done
+
+isicpu: ${THEOBJ} Makefile depends
 	@${CC} ${THEOBJ} -Wl,-as-needed -lrt -o isicpu
 	@if [ -x isicpu ] ; then echo "Build complete"; fi
+
+include depends
 
 %.o: %.c Makefile
 	@echo "$< > CC > $@ ($*)"

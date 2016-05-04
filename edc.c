@@ -41,33 +41,32 @@ int EDC_Init(struct EDC_Dev *dsp, unsigned w, unsigned h)
 	return 0;
 }
 
-int EDC_Query(void *hwd, struct systemhwstate *isi)
+int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
 	struct EDC_Dev *dsp;
-	if(!hwd) return -1;
-	dsp = (struct EDC_Dev*)hwd;
+	if(!info) return -1;
+	dsp = (struct EDC_Dev*)info->rvstate;
 
 	DEBUG_PRINTF("EDC - HWQ\n");
-	isi->regs[0] = 0xe4ff;
-	isi->regs[1] = 0xed73;
-	isi->regs[2] = dsp->version;
-	isi->regs[3] = 0x5742;
-	isi->regs[4] = 0x59ea;
+	msg[0] = 0xe4ff;
+	msg[1] = 0xed73;
+	msg[2] = dsp->version;
+	msg[3] = 0x5742;
+	msg[4] = 0x59ea;
 
 	return HWQ_SUCCESS;
 }
 
-int EDC_HWI(void *hwd, struct systemhwstate *isi)
+int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
 	struct EDC_Dev *dsp;
-	uint16_t a;
 	int i;
 
-	if(!hwd) return -1;
-	dsp = (struct EDC_Dev*)hwd;
-	a = isi->regs[0];
+	if(!info) return -1;
+	dsp = (struct EDC_Dev*)info->rvstate;
+	uint16_t a = msg[1];
 
-	switch(isi->msg) {
+	switch(msg[0]) {
 	case 0:
 		DEBUG_PRINTF("EDC - HWI: control %04x\n", a);
 		dsp->status &= ~0x1f;
@@ -75,7 +74,6 @@ int EDC_HWI(void *hwd, struct systemhwstate *isi)
 		dsp->backlight = (dsp->status & 3) == 3 ? -1 : 0;
 		break;
 	case 1:
-		a = isi->regs[0];
 		DEBUG_PRINTF("EDC - HWI: set-address %04x\n", a);
 		if(a < 0x0400) {
 			dsp->address = a;
@@ -93,7 +91,7 @@ int EDC_HWI(void *hwd, struct systemhwstate *isi)
 	case 3:
 		if(dsp->address > 0x400) {
 			dsp->address = 0;
-			DEBUG_PRINTF("EDC - HWI: write out of bound\n", a);
+			DEBUG_PRINTF("EDC - HWI: write out of bound\n");
 		}
 		if(dsp->address > 0x200) {
 			DEBUG_PRINTF("EDC - HWI: write glyph ram %04x\n", a);
@@ -135,7 +133,7 @@ int EDC_HWI(void *hwd, struct systemhwstate *isi)
 		for(i = 0; i < 512; i++) dsp->gram[i] = 0;
 		break;
 	default:
-		DEBUG_PRINTF("EDC - HWI: Unsupported command: %04x\n", isi->msg);
+		DEBUG_PRINTF("EDC - HWI: Unsupported command: %04x\n", msg[0]);
 		break;
 	}
 	return 0;

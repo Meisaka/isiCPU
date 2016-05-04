@@ -4,4 +4,6 @@
 isicpu
 *~
 *.swp
+*.bin
+depends
 
