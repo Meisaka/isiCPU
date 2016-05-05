@@ -4,6 +4,7 @@ struct LKBD {
 	uint16_t imsg;
 	int keykount;
 	unsigned char keybf[8];
+	unsigned char keydown[8];
 };
 
 int Keyboard_SIZE(int t, const char *cfg)
@@ -13,6 +14,62 @@ int Keyboard_SIZE(int t, const char *cfg)
 	default: return 0;
 	}
 }
+
+static void Keyboard_KDown(struct LKBD *kb, int kc)
+{
+	int i;
+	for(i = 0; i < 8; i++) {
+		if(!kb->keydown[i]) {
+			kb->keydown[i] = kc;
+			break;
+		}
+	}
+	if(i==8) kb->keydown[0] = kc;
+	if(kb->keykount < 8) {
+		kb->keybf[kb->keykount++] = kc;
+	} else {
+		for(i = 0; i < 7; i++) {
+			kb->keybf[i] = kb->keybf[i+1];
+		}
+		kb->keybf[7] = kc;
+	}
+}
+
+static int Keyboard_get(struct LKBD *kb)
+{
+	int kc = kb->keybf[0];
+	int i;
+	if(kb->keykount) {
+		for(i = 0; i < 7; i++) {
+			kb->keybf[i] = kb->keybf[i+1];
+		}
+		kb->keykount--;
+		return kc;
+	}
+	return 0;
+}
+
+static int Keyboard_check(struct LKBD *kb, int kc)
+{
+	int i;
+	for(i = 0; i < 8; i++) {
+		if(kb->keydown[i] == kc) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void Keyboard_KUp(struct LKBD *kb, int kc)
+{
+	int i;
+	for(i = 0; i < 8; i++) {
+		if(kb->keydown[i] == kc) {
+			kb->keydown[i] = 0;
+		}
+	}
+}
+
 
 int Keyboard_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
 {
@@ -24,19 +81,10 @@ int Keyboard_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struc
 		kyb->keykount = 0;
 		break;
 	case 1: // Get key pressed [C]
-		if(kyb->keykount) { // TODO buffer keys
-			msg[2] = kyb->keybf[0];
-			kyb->keykount--;
-		} else {
-			msg[2] = 0;
-		}
+		msg[2] = Keyboard_get(kyb);
 		break;
 	case 2: // Is key [B] pressed?
-		if(kyb->keykount) { // XXX should scan all pressed keys
-			msg[2] = ((kyb->keybf[0] == msg[1]) ? 1 : 0);
-		} else {
-			msg[2] = 0;
-		}
+		msg[2] = Keyboard_check(kyb, msg[1]);
 		break;
 	case 3: // Set interupt
 		kyb->imsg = msg[1];
@@ -64,8 +112,14 @@ int Keyboard_Tick(struct isiInfo *info, struct systemhwstate *isi, struct timesp
 	if(i > 0) {
 		i = recv(isi->net->sfd, tbf, 3, 0);
 		if(tbf[0] == 0x080 && tbf[1] == 0x0E7) {
-			kyb->keybf[0] = tbf[2];
-			kyb->keykount = 1;
+			Keyboard_KDown(kyb, tbf[2]);
+			if(kyb->imsg) {
+				isi->msg = kyb->imsg;
+				return 1;
+			}
+		}
+		if(tbf[0] == 0x080 && tbf[1] == 0x0E8) {
+			Keyboard_KUp(kyb, tbf[2]);
 			if(kyb->imsg) {
 				isi->msg = kyb->imsg;
 				return 1;
