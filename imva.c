@@ -83,7 +83,7 @@ int imva_raster(struct imva_nvstate *imva, uint16_t *ram, uint32_t *rgba, uint32
 
 	int omode;
 	omode = (imva->ovmode >> 4) & 3;
-	uint32_t x, y, z, ovflag, cell, ovcell, of, v, vv;
+	uint32_t x, y, z, ovflag, cell, of, v, vv;
 	cell = 0;
 	z = 0;
 	ovflag = 0;

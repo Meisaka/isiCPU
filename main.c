@@ -37,11 +37,14 @@ static int numberofcpus = 1;
 static int softcpumax = 1;
 static int softcpumin = 1;
 
-static struct isiCPUInfo allcpus[CPUSMAX];
+static struct isiDevTable alldev;
+static struct isiDevTable allcpu;
+static struct isiDevTable allsync;
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
-"Options:\n -D  Enable debug\n -e  Assume <binfile> is little-endian\n"
+"Options:\n"
+" -e  Assume <binfile> is little-endian\n"
 " -s  Enable server and wait for connection before\n"
 "     starting emulation. (Valid with -r)\n"
 " -p <portnum>  Listen on <portnum> instead of the default (valid with -s)\n"
@@ -219,7 +222,7 @@ static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
 	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
 
-void showdisasm_dcpu(const struct isiCPUInfo *info)
+void showdisasm_dcpu(const struct isiInfo *info)
 {
 	const DCPU * cpu = (const DCPU*)info->rvstate;
 	uint16_t ma = cpu->PC;
@@ -282,14 +285,15 @@ void showdisasm_dcpu(const struct isiCPUInfo *info)
 	fprintf(stderr, "\n");
 }
 
-void showdiag_dcpu(const struct isiCPUInfo* info, int fmt)
+void showdiag_dcpu(const struct isiInfo* info, int fmt)
 {
+	const struct isiCPUInfo *l_info = (const struct isiCPUInfo *)info;
 	const DCPU * cpu = (const DCPU*)info->rvstate;
 	const char *diagt;
 	diagt = fmt ? DIAG_L2 : DIAG_L4;
 	fprintf(stderr, diagt,
 	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
-	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA, info->cycl);
+	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA, l_info->cycl);
 	if(fmt) {
 		showdisasm_dcpu(info);
 	}
@@ -327,6 +331,29 @@ void isi_setrate(struct isiCPUInfo *info, size_t rate) {
 	}
 }
 
+int isi_inittable(struct isiDevTable *t)
+{
+	t->limit = 32;
+	t->count = 0;
+	t->table = (struct isiInfo**)malloc(t->limit * sizeof(void*));
+	return 0;
+}
+
+int isi_pushdev(struct isiDevTable *t, struct isiInfo *d)
+{
+	if(!d) return -1;
+	void *n;
+	if(!t->limit || !t->table) isi_inittable(t);
+	if(t->count >= t->limit) {
+		n = realloc(t->table, (t->limit + t->limit) * sizeof(void*));
+		if(!n) return -5;
+		t->limit += t->limit;
+		t->table = (struct isiInfo**)n;
+	}
+	t->table[t->count++] = d;
+	return 0;
+}
+
 int isi_createdev(struct isiInfo **ndev)
 {
 	if(!ndev) return -1;
@@ -334,6 +361,19 @@ int isi_createdev(struct isiInfo **ndev)
 	info = (struct isiInfo*)malloc(sizeof(struct isiInfo));
 	if(!info) return -5;
 	memset(info, 0, sizeof(struct isiInfo));
+	isi_pushdev(&alldev, info);
+	*ndev = info;
+	return 0;
+}
+
+int isi_createcpu(struct isiCPUInfo **ndev)
+{
+	if(!ndev) return -1;
+	struct isiCPUInfo *info;
+	info = (struct isiCPUInfo*)malloc(sizeof(struct isiCPUInfo));
+	if(!info) return -5;
+	memset(info, 0, sizeof(struct isiCPUInfo));
+	isi_pushdev(&alldev, (struct isiInfo*)info);
 	*ndev = info;
 	return 0;
 }
@@ -344,10 +384,10 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	isi_setrate(cpu, 100000); // 100kHz
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
 	cpu->mem = malloc(sizeof(struct memory64x16));
-	DCPU_init(cpu, (isiram16)cpu->mem);
+	DCPU_init((struct isiInfo*)cpu, (isiram16)cpu->mem);
 	isi_createdev(&bus);
 	HWM_CreateBus(bus);
-	cpu->Attach((struct isiInfo*)cpu, bus);
+	((struct isiInfo*)cpu)->Attach((struct isiInfo*)cpu, bus);
 	isi_createdev(&ninfo);
 	HWM_CreateDevice(ninfo, "nya_lem");
 	bus->Attach(bus, ninfo);
@@ -382,7 +422,6 @@ int main(int argc, char**argv, char**envp)
 	int ssvr;
 	int cux;
 	uintptr_t gccq = 0;
-	uintptr_t glccq = 0;
 	uintptr_t lucycles = 0;
 	uintptr_t lucpus = 0;
 	struct stats sts = {0, };
@@ -399,7 +438,9 @@ int main(int argc, char**argv, char**envp)
 	ssvr = 0;
 	haltnow= 0;
 	binf = NULL;
-	memset(allcpus, 0, sizeof(allcpus));
+	isi_inittable(&alldev);
+	isi_inittable(&allcpu);
+	isi_inittable(&allsync);
 	int i,k;
 
 	if( argc > 1 ) {
@@ -465,7 +506,10 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun == 1) { // normal operation /////////////////////////
 
 		for(cux = 0; cux < softcpumax; cux++) {
-			isi_addcpu(allcpus+cux, "");
+			struct isiCPUInfo *ncpu;
+			isi_createcpu(&ncpu);
+			isi_addcpu(ncpu, "");
+			isi_pushdev(&allcpu, (struct isiInfo*)ncpu);
 		}
 		if(ssvr) {
 			makewaitserver();
@@ -474,34 +518,35 @@ int main(int argc, char**argv, char**envp)
 
 		sigaction(SIGINT, &hnler, NULL);
 
-		for(cux = 0; cux < numberofcpus; cux++) {
-			fetchtime(&allcpus[cux].nrun);
-			allcpus[cux].Reset((struct isiInfo*)(allcpus+cux));
+		for(cux = 0; cux < allcpu.count; cux++) {
+			fetchtime(&allcpu.table[cux]->nrun);
+			allcpu.table[cux]->Reset(allcpu.table[cux]);
 		}
 		fetchtime(&LTUTime);
 		lucycles = 0; // how many cycles ran (debugging)
 		cux = 0; // CPU index - currently never changes
-		if(allcpus[cux].ctl & ISICTL_DEBUG) {
-			showdiag_dcpu(allcpus+cux, 1);
+		if(((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
+			showdiag_dcpu(allcpu.table[cux], 1);
 		}
 		while(!haltnow) {
 			struct isiCPUInfo * ccpu;
+			struct isiInfo * ccpi;
 			struct timespec CRun;
 
-			ccpu = allcpus + cux;
+			ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cux]);
 			fetchtime(&CRun);
 
 			{
 				int ccq = 0;
 				int tcc = numberofcpus * 2;
 				if(tcc < 20) tcc = 20;
-				while(ccq < tcc && (ccpu->nrun.tv_sec < CRun.tv_sec || ccpu->nrun.tv_nsec < CRun.tv_nsec)) {
+				while(ccq < tcc && (ccpi->nrun.tv_sec < CRun.tv_sec || ccpi->nrun.tv_nsec < CRun.tv_nsec)) {
 					sts.quanta++;
-					ccpu->RunCycles((struct isiInfo*)ccpu, &ses, CRun);
+					ccpi->RunCycles(ccpi, &ses, CRun);
 					//TODO some hardware may need to work at the same time
 					lucycles += ccpu->cycl;
 					if((ccpu->ctl & ISICTL_DEBUG) && (ccpu->cycl)) {
-						showdiag_dcpu(ccpu, 1);
+						showdiag_dcpu(ccpi, 1);
 					}
 					ccpu->cycl = 0;
 					fetchtime(&CRun);
@@ -511,8 +556,8 @@ int main(int argc, char**argv, char**envp)
 				sts.cpusched++;
 				fetchtime(&CRun);
 
-				if(ccpu->outdev && ccpu->outdev->RunCycles) {
-					ccpu->outdev->RunCycles(ccpu->outdev, &ses, CRun);
+				if(ccpi->outdev && ccpi->outdev->RunCycles) {
+					ccpi->outdev->RunCycles(ccpi->outdev, &ses, CRun);
 				}
 			}
 
@@ -520,12 +565,12 @@ int main(int argc, char**argv, char**envp)
 			if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
 				double clkdelta;
 				float clkrate;
-				if(!flagdbg) showdiag_dcpu(&allcpus[0], 0);
+				if(!flagdbg) showdiag_dcpu(allcpu.table[0], 0);
 				clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
 				clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 				if(!lucpus) lucpus = 1;
 				clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
-				fprintf(stderr, "DC: %.4f sec, %d at % 9.3f kHz   (% 8d) [Q:% 8d, S:% 8d, SC:% 8d]\r",
+				fprintf(stderr, "DC: %.4f sec, %d at % 9.3f kHz   (% 8ld) [Q:% 8d, S:% 8d, SC:% 8d]\r",
 						clkdelta, numberofcpus, clkrate, gccq,
 						sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
 						);
@@ -534,14 +579,16 @@ int main(int argc, char**argv, char**envp)
 				if(gccq >= sts.cpusched / numberofcpus ) {
 					if(numberofcpus > softcpumin) {
 						numberofcpus--;
+						fprintf(stderr, "TODO: Offline a CPU\n");
 						premlimit--;
 						paddlimit = 0;
 					}
 				} else {
 					if(numberofcpus < softcpumax) {
-						fetchtime(&allcpus[numberofcpus].nrun);
-						isi_addtime(&allcpus[numberofcpus].nrun, quantum);
+						//fetchtime(&allcpus[numberofcpus].nrun);
+						//isi_addtime(&allcpus[numberofcpus].nrun, quantum);
 						numberofcpus++;
+						fprintf(stderr, "TODO: Online a CPU\n");
 					}
 				}
 				lucycles = 0;
@@ -564,7 +611,7 @@ int main(int argc, char**argv, char**envp)
 					fetchtime(&CRun);
 					switch(cc) {
 					case 10:
-						allcpus[0].ctl |= ISICTL_STEPE;
+						((struct isiCPUInfo*)allcpu.table[0])->ctl |= ISICTL_STEPE;
 						break;
 					case 'r':
 						i = read(0, ccv, 5);
@@ -583,7 +630,7 @@ int main(int argc, char**argv, char**envp)
 								}
 								t = (t << 4) | (ti & 15);
 							}
-							ti = ((isiram16)allcpus[0].mem)->ram[t];
+							ti = ((isiram16)((struct isiCPUInfo*)allcpu.table[0])->mem)->ram[t];
 							fprintf(stderr, "READ %04x:%04x\n", t, ti);
 						}
 						break;
@@ -597,9 +644,8 @@ int main(int argc, char**argv, char**envp)
 			}
 			if(!flagdbg) {
 				cux++;
-				if(cux > numberofcpus - 1) {
+				if(cux > allcpu.count - 1) {
 					cux = 0;
-					glccq = gccq;
 				}
 			} else {
 				numberofcpus = 1;

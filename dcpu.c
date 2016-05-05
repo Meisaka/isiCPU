@@ -31,7 +31,7 @@ static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
-void DCPU_init(struct isiCPUInfo *info, isiram16 ram)
+void DCPU_init(struct isiInfo *info, isiram16 ram)
 {
 	DCPU* pr;
 	pr = (DCPU*)malloc(sizeof(DCPU));
@@ -47,8 +47,7 @@ void DCPU_init(struct isiCPUInfo *info, isiram16 ram)
 
 static int DCPU_reset(struct isiInfo *info)
 {
-	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
-	DCPU *pr; pr = (DCPU*)l_info->rvstate;
+	DCPU *pr; pr = (DCPU*)info->rvstate;
 	int i;
 	for(i = 0; i < 8; i++)
 	{
@@ -309,7 +308,7 @@ static const int DCPU_dwtbl[] =
 static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timespec crun)
 {
 	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
-	DCPU *pr = (DCPU*)l_info->rvstate;
+	DCPU *pr = (DCPU*)info->rvstate;
 	isiram16 ram = pr->memptr;
 	size_t cycl = 0;
 	int op;
@@ -332,14 +331,14 @@ static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timesp
 			ccq = 1;
 			l_info->ctl &= ~ISICTL_STEPE;
 		} else {
-			l_info->nrun.tv_sec = crun.tv_sec;
-			l_info->nrun.tv_nsec = crun.tv_nsec;
-			isi_addtime(&l_info->nrun, l_info->runrate);
+			info->nrun.tv_sec = crun.tv_sec;
+			info->nrun.tv_nsec = crun.tv_nsec;
+			isi_addtime(&info->nrun, l_info->runrate);
 		}
 	} else {
 		ccq = l_info->rate;
 	}
-	while(ccq && (l_info->nrun.tv_sec < crun.tv_sec || l_info->nrun.tv_nsec < crun.tv_nsec)) {
+	while(ccq && (info->nrun.tv_sec < crun.tv_sec || info->nrun.tv_nsec < crun.tv_nsec)) {
 
 	if(pr->MODE == BURNING) {
 		cycl += 3;
@@ -668,7 +667,7 @@ ecpu:
 		ccq -= cycl; // each op uses cycles
 	}
 	l_info->cycl += cycl;
-	isi_addtime(&l_info->nrun, cycl * l_info->runrate);
+	isi_addtime(&info->nrun, cycl * l_info->runrate);
 	cycl = 0;
 	} // while ccq
 	return 0;

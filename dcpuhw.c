@@ -4,10 +4,6 @@
 #define DEBUG_DCPUHW 1
 extern struct stdevtable devtable[];
 
-struct HWM_loadout {
-	int hcount;
-};
-
 size_t HWM_GetSize(int idt, const char * cfg, size_t *sts, size_t *vs)
 {
 #if DEBUG_MEM == 1
@@ -28,12 +24,11 @@ size_t HWM_GetSize(int idt, const char * cfg, size_t *sts, size_t *vs)
 int HWM_FreeAll(struct isiInfo *info)
 {
 	if(!info) return -1;
-	if(info->busdev) {
-#if DEBUG_MEM == 1
-		fprintf(stderr, "hwm: free HW mem\n");
-#endif
-		free(info->busdev);
-		info->busdev = NULL;
+	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	if(bus->busdev.table) {
+		fprintf(stderr, "hwm: TODO correct free HW mem\n");
+		free(bus->busdev.table);
+		bus->busdev.table = NULL;
 	}
 	if(info->rvstate) {
 		free(info->rvstate);
@@ -42,31 +37,25 @@ int HWM_FreeAll(struct isiInfo *info)
 	return 0;
 }
 
-int HWM_DeviceAdd(struct isiInfo *bus, struct isiInfo *dev)
+int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 {
-	if(!bus->rvstate) return -1;
-	size_t hs = ((struct HWM_loadout*)bus->rvstate)->hcount;
-	void * nb;
-	nb = realloc(bus->busdev, sizeof(struct isiInfo*) * (hs+1));
-	if(!nb) return -5;
-	bus->busdev = (struct isiInfo **)nb;
-	bus->busdev[hs] = dev;
-	((struct HWM_loadout*)bus->rvstate)->hcount = hs + 1;
+	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	isi_pushdev(&bus->busdev, dev);
 #if DEBUG_DCPUHW == 1
-	fprintf(stderr, "hwm: adding device c=%d\n", ((struct HWM_loadout*)bus->rvstate)->hcount);
+	fprintf(stderr, "hwm: adding device c=%d\n", bus->busdev.count);
 #endif
 	return 0;
 }
 
-int HWM_Query(struct isiInfo *dest, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
 	int knt, r;
 	r = HWQ_FAIL;
 	size_t h;
 	size_t hs;
 	h = msg[1];
-	if(!dest->rvstate) return -1;
-	hs = ((struct HWM_loadout*)dest->rvstate)->hcount;
+	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	hs = bus->busdev.count;
 
 	// call it in context
 	switch(msg[0]) {
@@ -75,7 +64,7 @@ int HWM_Query(struct isiInfo *dest, struct isiInfo *src, uint16_t *msg, struct t
 		struct isiInfo *dev;
 		fprintf(stderr, "hwmreset-all c=%ld\n", hs);
 		for(h = 0; h < hs; h++) {
-			dev = dest->busdev[h];
+			dev = bus->busdev.table[h];
 			knt = dev->id.objtype - ARCH_DCPUHW;
 			if((devtable[knt].flags & 0x4000) && devtable[knt].OnReset) {
 #if DEBUG_DCPUHW == 1
@@ -92,7 +81,7 @@ int HWM_Query(struct isiInfo *dest, struct isiInfo *src, uint16_t *msg, struct t
 #endif
 			break;
 		}
-		knt = dest->busdev[h]->id.objtype - ARCH_DCPUHW;
+		knt = bus->busdev.table[h]->id.objtype - ARCH_DCPUHW;
 #if DEBUG_DCPUHW == 1
 		fprintf(stderr, "hwmhwq: %s %ld %04x : ", devtable[knt].devid_name, h, devtable[knt].flags);
 #endif
@@ -105,7 +94,7 @@ int HWM_Query(struct isiInfo *dest, struct isiInfo *src, uint16_t *msg, struct t
 			r = HWQ_SUCCESS;
 		}
 		if(devtable[knt].OnHWQ) {
-			r = devtable[knt].OnHWQ(dest->busdev[h], src, msg+2, mtime);
+			r = devtable[knt].OnHWQ(bus->busdev.table[h], src, msg+2, mtime);
 #if DEBUG_DCPUHW == 1
 		fprintf(stderr, "call: %d", r);
 #endif
@@ -121,13 +110,13 @@ int HWM_Query(struct isiInfo *dest, struct isiInfo *src, uint16_t *msg, struct t
 #endif
 			break;
 		}
-		knt = dest->busdev[h]->id.objtype - ARCH_DCPUHW;
+		knt = bus->busdev.table[h]->id.objtype - ARCH_DCPUHW;
 		if((devtable[knt].flags & 0x4002) == 0x4002) {
 #if DEBUG_DCPUHW == 1
 			if(!(devtable[knt].flags & 0x0100))
 				fprintf(stderr, "[HWIA %s %04x]\n", devtable[knt].devid_name, devtable[knt].flags);
 #endif
-			r = devtable[knt].OnHWI(dest->busdev[h], src, msg+2, mtime);
+			r = devtable[knt].OnHWI(bus->busdev.table[h], src, msg+2, mtime);
 		} else {
 #if DEBUG_DCPUHW == 1
 			fprintf(stderr, "[HWIN %s %04x]\n", devtable[knt].devid_name, devtable[knt].flags);
@@ -147,10 +136,10 @@ int HWM_Run(struct isiInfo *info, struct isiSession *ses, struct timespec crun)
 	hws.net = ses;
 	hws.mem = (isiram16)((struct isiCPUInfo *)info->outdev)->mem;
 	struct isiInfo *dev;
-	if(!info->rvstate) return -1;
-	hs = ((struct HWM_loadout*)info->rvstate)->hcount;
+	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
-		dev = info->busdev[k];
+		dev = bus->busdev.table[k];
 		i = dev->id.objtype - ARCH_DCPUHW;
 		if((devtable[i].flags & 0x4004) == 0x4004) {
 			if(devtable[i].OnTick(dev, &hws, crun)) {
@@ -218,9 +207,6 @@ int HWM_CreateBus(struct isiInfo *info)
 	info->Reset = NULL;
 	info->MsgIn = HWM_Query;
 	info->Attach = HWM_DeviceAdd;
-	info->rvstate = malloc(sizeof(struct HWM_loadout));
-	if(!info->rvstate) return -5;
-	((struct HWM_loadout*)info->rvstate)->hcount = 0;
 	return 0;
 }
 
