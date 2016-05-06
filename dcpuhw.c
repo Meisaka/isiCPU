@@ -65,7 +65,7 @@ int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 		fprintf(stderr, "hwmreset-all c=%ld\n", hs);
 		for(h = 0; h < hs; h++) {
 			dev = bus->busdev.table[h];
-			knt = dev->id.objtype - ARCH_DCPUHW;
+			knt = dev->id.objtype - ISIT_DCPUHW;
 			if((devtable[knt].flags & 0x4000) && devtable[knt].OnReset) {
 #if DEBUG_DCPUHW == 1
 		fprintf(stderr, "hwmreset: %s %ld\n", devtable[knt].devid_name, h);
@@ -81,7 +81,7 @@ int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 #endif
 			break;
 		}
-		knt = bus->busdev.table[h]->id.objtype - ARCH_DCPUHW;
+		knt = bus->busdev.table[h]->id.objtype - ISIT_DCPUHW;
 #if DEBUG_DCPUHW == 1
 		fprintf(stderr, "hwmhwq: %s %ld %04x : ", devtable[knt].devid_name, h, devtable[knt].flags);
 #endif
@@ -110,7 +110,7 @@ int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 #endif
 			break;
 		}
-		knt = bus->busdev.table[h]->id.objtype - ARCH_DCPUHW;
+		knt = bus->busdev.table[h]->id.objtype - ISIT_DCPUHW;
 		if((devtable[knt].flags & 0x4002) == 0x4002) {
 #if DEBUG_DCPUHW == 1
 			if(!(devtable[knt].flags & 0x0100))
@@ -140,7 +140,7 @@ int HWM_Run(struct isiInfo *info, struct isiSession *ses, struct timespec crun)
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		dev = bus->busdev.table[k];
-		i = dev->id.objtype - ARCH_DCPUHW;
+		i = dev->id.objtype - ISIT_DCPUHW;
 		if((devtable[i].flags & 0x4004) == 0x4004) {
 			if(devtable[i].OnTick(dev, &hws, crun)) {
 				info->outdev->MsgIn(info->outdev, dev, &hws.msg, crun);
@@ -178,7 +178,7 @@ int HWM_CreateDevice(struct isiInfo *info, const char *cfg)
 #if DEBUG_MEM == 1
 	fprintf(stderr, "hwm: init hwdev\n");
 #endif
-	info->id.objtype = ARCH_DCPUHW + i;
+	info->id.objtype = ISIT_DCPUHW + i;
 	info->RunCycles = NULL;
 	info->Reset = NULL;
 	info->MsgIn = NULL;
@@ -202,7 +202,7 @@ int HWM_CreateBus(struct isiInfo *info)
 #if DEBUG_MEM == 1
 	fprintf(stderr, "hwm: init bus\n");
 #endif
-	info->id.objtype = ARCH_DCPUBUS;
+	info->id.objtype = ISIT_DCPUBUS;
 	info->RunCycles = HWM_Run;
 	info->Reset = NULL;
 	info->MsgIn = HWM_Query;

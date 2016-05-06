@@ -24,7 +24,7 @@ static int DCPU_run(struct isiInfo *, struct isiSession *, struct timespec);
 static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 {
 	if(!info || !dev) return -1;
-	if(dev->id.objtype != ARCH_DCPUBUS) return -1;
+	if(dev->id.objtype != ISIT_DCPUBUS) return -1;
 	info->MsgOut = dev->MsgIn;
 	info->outdev = dev;
 	dev->outdev = info;
@@ -37,7 +37,7 @@ void DCPU_init(struct isiInfo *info, isiram16 ram)
 	pr = (DCPU*)malloc(sizeof(DCPU));
 	memset(pr, 0, sizeof(DCPU));
 	info->rvstate = pr;
-	info->id.objtype = ARCH_DCPU;
+	info->id.objtype = ISIT_DCPU;
 	info->RunCycles = DCPU_run;
 	info->Reset = DCPU_reset;
 	info->MsgIn = DCPU_interrupt;

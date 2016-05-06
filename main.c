@@ -37,9 +37,21 @@ static int numberofcpus = 1;
 static int softcpumax = 1;
 static int softcpumin = 1;
 
+struct isiSyncTable {
+	struct isiNetSync ** table;
+	uint32_t count;
+	uint32_t limit;
+} allsync;
+
 static struct isiDevTable alldev;
 static struct isiDevTable allcpu;
-static struct isiDevTable allsync;
+
+uint32_t maxsid = 0;
+static struct isiObjTable {
+	struct objtype ** table;
+	uint32_t count;
+	uint32_t limit;
+} allobj;
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
@@ -308,6 +320,222 @@ void fetchtime(struct timespec * t)
 	clock_gettime(CLOCK_MONOTONIC_RAW, t);
 }
 
+void isi_objtable_init()
+{
+	allobj.limit = 256;
+	allobj.count = 0;
+	allobj.table = (struct objtype**)malloc(allobj.limit * sizeof(void*));
+}
+
+int isi_objtable_add(struct objtype *obj)
+{
+	if(!obj) return -1;
+	void *n;
+	if(allobj.count >= allobj.limit) {
+		n = realloc(allobj.table, (allobj.limit + allobj.limit) * sizeof(void*));
+		if(!n) return -5;
+		allobj.limit += allobj.limit;
+		allobj.table = (struct objtype**)n;
+	}
+	allobj.table[allobj.count++] = obj;
+	return 0;
+}
+
+int isi_get_type_size(int objtype, size_t *sz)
+{
+	size_t objsize = 0;
+	if( (objtype >> 12) > 2 ) objtype &= ~0xfff;
+	switch(objtype) {
+	case ISIT_NONE: return -1;
+	case ISIT_SESSION: objsize = sizeof(struct isiSession); break;
+	case ISIT_NETSYNC: objsize = sizeof(struct isiNetSync); break;
+	case ISIT_MEM6416: objsize = sizeof(struct memory64x16); break;
+	case ISIT_CPU: objsize = sizeof(struct isiCPUInfo); break;
+	case ISIT_BUSDEV: objsize = sizeof(struct isiBusInfo); break;
+	case ISIT_DCPUHW: objsize = sizeof(struct isiInfo); break;
+	}
+	if(objsize) {
+		*sz = objsize;
+		return 0;
+	}
+	return -1;
+}
+
+int isi_create_object(int objtype, struct objtype **out)
+{
+	if(!out) return -1;
+	struct objtype *ns;
+	size_t objsize = 0;
+	if(isi_get_type_size(objtype, &objsize)) return -2;
+	ns = malloc(objsize);
+	if(!ns) return -5;
+	memset(ns, 0, objsize);
+	ns->id = ++maxsid; // TODO make "better" ID numbers?
+	ns->objtype = objtype;
+	isi_objtable_add(ns);
+	*out = ns;
+	return 0;
+}
+
+void isi_synctable_init()
+{
+	allsync.limit = 128;
+	allsync.count = 0;
+	allsync.table = (struct isiNetSync**)malloc(allsync.limit * sizeof(void*));
+}
+
+int isi_synctable_add(struct isiNetSync *sync)
+{
+	if(!sync) return -1;
+	void *n;
+	if(allsync.count >= allsync.limit) {
+		n = realloc(allsync.table, (allsync.limit + allsync.limit) * sizeof(void*));
+		if(!n) return -5;
+		allsync.limit += allsync.limit;
+		allsync.table = (struct isiNetSync**)n;
+	}
+	allsync.table[allsync.count++] = sync;
+	// TODO could probably sort this better, based on rate/id/hash.
+	return 0;
+}
+
+int isi_create_sync(struct isiNetSync **sync)
+{
+	return isi_create_object(ISIT_NETSYNC, (struct objtype**)sync);
+}
+
+int isi_find_sync(struct objtype *target, struct isiNetSync **sync)
+{
+	size_t i;
+	if(!target) return 0;
+	for(i = 0; i < allsync.count; i++) {
+		struct isiNetSync *ns = allsync.table[i];
+		if(ns && ns->target.id == target->id) {
+			if(sync) {
+				*sync = ns;
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int isi_find_devmem_sync(struct objtype *target, struct objtype *memtgt, struct isiNetSync **sync)
+{
+	size_t i;
+	if(!target) return 0;
+	for(i = 0; i < allsync.count; i++) {
+		struct isiNetSync *ns = allsync.table[i];
+		if(ns && ns->synctype == ISIN_SYNC_MEMDEV
+			&& ns->target.id == target->id
+			&& ns->memobj.id == memtgt->id) {
+			if(sync) {
+				*sync = ns;
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int isi_add_memsync(struct objtype *target, uint32_t base, uint32_t extent, size_t rate)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_sync(target, &ns)) {
+		isi_create_sync(&ns);
+		ns->target.id = target->id;
+		ns->target.objtype = target->objtype;
+		isi_synctable_add(ns);
+	}
+	ns->synctype = ISIN_SYNC_MEM;
+	ns->rate = rate;
+	if(ns->extents >= 4) return -1;
+	fprintf(stderr, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
+	ns->base[ns->extents] = base;
+	ns->len[ns->extents] = extent;
+	ns->extents++;
+	return ns->extents;
+}
+
+int isi_add_sync_extent(struct objtype *target, uint32_t base, uint32_t extent)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_sync(target, &ns)) {
+		isi_create_sync(&ns);
+		ns->target.id = target->id;
+		ns->target.objtype = target->objtype;
+		isi_synctable_add(ns);
+		ns->rate = 1000;
+		ns->synctype = ISIN_SYNC_MEM;
+	}
+	if(ns->extents >= 4) return -1;
+	fprintf(stderr, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
+	ns->base[ns->extents] = base;
+	ns->len[ns->extents] = extent;
+	ns->extents++;
+	return ns->extents - 1;
+}
+
+int isi_set_sync_extent(struct objtype *target, uint32_t index, uint32_t base, uint32_t extent)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_sync(target, &ns)) {
+		isi_create_sync(&ns);
+		ns->target.id = target->id;
+		ns->target.objtype = target->objtype;
+		isi_synctable_add(ns);
+		ns->rate = 1000;
+		ns->synctype = ISIN_SYNC_MEM;
+	}
+	if(index > 3) return -1;
+	if(ns->extents >= 4) return -1;
+	fprintf(stderr, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
+	ns->base[ns->extents] = base;
+	ns->len[ns->extents] = extent;
+	ns->extents++;
+	return ns->extents - 1;
+}
+
+int isi_add_devsync(struct objtype *target, size_t rate)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_sync(target, &ns)) {
+		isi_create_sync(&ns);
+		ns->target.id = target->id;
+		ns->target.objtype = target->objtype;
+		isi_synctable_add(ns);
+	}
+	ns->synctype = ISIN_SYNC_DEVR;
+	ns->rate = rate;
+	return 0;
+}
+
+int isi_add_devmemsync(struct objtype *target, struct objtype *memtarget, size_t rate)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_devmem_sync(target, memtarget, &ns)) {
+		isi_create_sync(&ns);
+		ns->target.id = target->id;
+		ns->target.objtype = target->objtype;
+		ns->memobj.id = memtarget->id;
+		ns->memobj.objtype = memtarget->objtype;
+		isi_synctable_add(ns);
+	}
+	ns->synctype = ISIN_SYNC_MEMDEV;
+	ns->rate = rate;
+	return 0;
+}
+
+int isi_remove_sync(struct objtype *target)
+{
+	struct isiNetSync *ns = 0;
+	if(!isi_find_sync(target, &ns)) {
+		fprintf(stderr, "netsync: request to remove non-existent sync\n");
+	}
+	fprintf(stderr, "netsync: TODO remove sync\n");
+	return 0;
+}
+
 void isi_addtime(struct timespec * t, size_t nsec) {
 	size_t asec, ansec;
 	asec  = nsec / 1000000000;
@@ -356,26 +584,12 @@ int isi_pushdev(struct isiDevTable *t, struct isiInfo *d)
 
 int isi_createdev(struct isiInfo **ndev)
 {
-	if(!ndev) return -1;
-	struct isiInfo *info;
-	info = (struct isiInfo*)malloc(sizeof(struct isiInfo));
-	if(!info) return -5;
-	memset(info, 0, sizeof(struct isiInfo));
-	isi_pushdev(&alldev, info);
-	*ndev = info;
-	return 0;
+	return isi_create_object(ISIT_DCPUHW, (struct objtype**)ndev);
 }
 
 int isi_createcpu(struct isiCPUInfo **ndev)
 {
-	if(!ndev) return -1;
-	struct isiCPUInfo *info;
-	info = (struct isiCPUInfo*)malloc(sizeof(struct isiCPUInfo));
-	if(!info) return -5;
-	memset(info, 0, sizeof(struct isiCPUInfo));
-	isi_pushdev(&alldev, (struct isiInfo*)info);
-	*ndev = info;
-	return 0;
+	return isi_create_object(ISIT_CPU, (struct objtype**)ndev);
 }
 
 int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
@@ -383,9 +597,9 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	struct isiInfo *bus, *ninfo;
 	isi_setrate(cpu, 100000); // 100kHz
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
-	cpu->mem = malloc(sizeof(struct memory64x16));
+	isi_create_object(ISIT_MEM6416, (struct objtype**)&cpu->mem);
 	DCPU_init((struct isiInfo*)cpu, (isiram16)cpu->mem);
-	isi_createdev(&bus);
+	isi_create_object(ISIT_BUSDEV, (struct objtype**)&bus);
 	HWM_CreateBus(bus);
 	((struct isiInfo*)cpu)->Attach((struct isiInfo*)cpu, bus);
 	isi_createdev(&ninfo);
@@ -438,9 +652,10 @@ int main(int argc, char**argv, char**envp)
 	ssvr = 0;
 	haltnow= 0;
 	binf = NULL;
+	isi_objtable_init();
 	isi_inittable(&alldev);
 	isi_inittable(&allcpu);
-	isi_inittable(&allsync);
+	isi_synctable_init();
 	int i,k;
 
 	if( argc > 1 ) {
@@ -636,6 +851,13 @@ int main(int argc, char**argv, char**envp)
 						break;
 					case 'x':
 						haltnow = 1;
+						break;
+					case 'l':
+						i = 0;
+						while(i < allobj.count) {
+							fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[i]->id, allobj.table[i]->objtype);
+							i++;
+						}
 						break;
 					default:
 						break;
