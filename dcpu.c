@@ -19,13 +19,12 @@ static int DCPU_setonfire(DCPU *);
 static inline void DCPU_skipref(int, DCPU *);
 static int DCPU_reset(struct isiInfo *);
 static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, uint16_t *, struct timespec);
-static int DCPU_run(struct isiInfo *, struct isiSession *, struct timespec);
+static int DCPU_run(struct isiInfo *, struct timespec);
 
 static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 {
 	if(!info || !dev) return -1;
 	if(dev->id.objtype != ISIT_DCPUBUS) return -1;
-	info->MsgOut = dev->MsgIn;
 	info->outdev = dev;
 	dev->outdev = info;
 	return 0;
@@ -43,6 +42,7 @@ void DCPU_init(struct isiInfo *info, isiram16 ram)
 	info->MsgIn = DCPU_interrupt;
 	info->Attach = DCPU_AttachBus;
 	pr->memptr = ram;
+	if(!info->mem) info->mem = ram;
 }
 
 static int DCPU_reset(struct isiInfo *info)
@@ -61,7 +61,9 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->cycl = 0;
 	pr->IQC = 0;
 	pr->msg = 0;
-	if((info->MsgOut) && (info->MsgOut(info->outdev, info, &pr->msg, info->nrun))) {
+	if((info->outdev)
+		&& (info->outdev->MsgIn)
+		&& (info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun) == 0)) {
 		pr->hwcount = pr->dai;
 	}
 	return 0;
@@ -305,7 +307,7 @@ static const int DCPU_dwtbl[] =
 	0, 0, 1, 1, 0, 0, 0, 0
 };
 
-static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timespec crun)
+static int DCPU_run(struct isiInfo * info, struct timespec crun)
 {
 	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
 	DCPU *pr = (DCPU*)info->rvstate;
@@ -417,7 +419,9 @@ static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timesp
 				alu1.u = DCPU_deref(oa, pr, ram);
 				pr->msg = 1;
 				pr->dai = alu1.u;
-				if((info->MsgOut) && (info->MsgOut(info->outdev, info, &pr->msg, info->nrun) == HWQ_SUCCESS)) {
+				if((info->outdev)
+					&& (info->outdev->MsgIn)
+					&& (info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun) == 0)) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -431,7 +435,9 @@ static int DCPU_run(struct isiInfo * info, struct isiSession *ses, struct timesp
 				//pr->MODE |= DCPUMODE_EXTINT;
 				pr->msg = 2;
 				pr->dai = alu1.u;
-				if((info->MsgOut) && (op = info->MsgOut(info->outdev, info, &pr->msg, info->nrun))) {
+				if((info->outdev)
+					&& (info->outdev->MsgIn)
+					&& (op = info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;

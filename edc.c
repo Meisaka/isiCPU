@@ -54,7 +54,7 @@ int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 	msg[3] = 0x5742;
 	msg[4] = 0x59ea;
 
-	return HWQ_SUCCESS;
+	return 0;
 }
 
 int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
@@ -97,7 +97,7 @@ int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct tim
 			DEBUG_PRINTF("EDC - HWI: write glyph ram %04x\n", a);
 			dsp->gram[dsp->address++ - 0x200] = a;
 		} else {
-			int line, col;
+			uint32_t line, col;
 			line = dsp->address >> 7;
 			col = dsp->address & 0x7f;
 			DEBUG_PRINTF("EDC - HWI: write line=%d,col=%d : %04x\n", line, col, a);
@@ -135,6 +135,17 @@ int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct tim
 	default:
 		DEBUG_PRINTF("EDC - HWI: Unsupported command: %04x\n", msg[0]);
 		break;
+	}
+	return 0;
+}
+
+int EDC_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+{
+	switch(msg[0]) {
+	case 0: break;
+	case 1: return EDC_Query(info,src,msg+2,mtime);
+	case 2: return EDC_HWI(info,src,msg+2,mtime);
+	default: break;
 	}
 	return 0;
 }

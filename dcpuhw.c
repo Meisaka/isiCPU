@@ -40,6 +40,8 @@ int HWM_FreeAll(struct isiInfo *info)
 int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 {
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	dev->outdev = info->outdev;
+	dev->mem = info->outdev->mem;
 	isi_pushdev(&bus->busdev, dev);
 #if DEBUG_DCPUHW == 1
 	fprintf(stderr, "hwm: adding device c=%d\n", bus->busdev.count);
@@ -47,102 +49,92 @@ int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
+int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
+{
+	size_t k;
+	size_t hs;
+	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+#if DEBUG_DCPUHW == 1
+	fprintf(stderr, "hwm: updating attachment c=%d\n", bus->busdev.count);
+#endif
+	hs = bus->busdev.count;
+	for(k = 0; k < hs; k++) {
+		if(bus->busdev.table[k]) {
+			bus->busdev.table[k]->outdev = dev;
+			bus->busdev.table[k]->mem = dev->mem;
+		}
+	}
+	return 0;
+}
+
 int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
 	int knt, r;
-	r = HWQ_FAIL;
+	r = 1;
 	size_t h;
 	size_t hs;
 	h = msg[1];
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
+	struct isiInfo *dev;
 	hs = bus->busdev.count;
 
 	// call it in context
 	switch(msg[0]) {
 	case 0:
 		msg[1] = (uint16_t)hs;
-		struct isiInfo *dev;
-		fprintf(stderr, "hwmreset-all c=%ld\n", hs);
+		fprintf(stderr, "hwm-reset-all c=%ld\n", hs);
 		for(h = 0; h < hs; h++) {
 			dev = bus->busdev.table[h];
 			knt = dev->id.objtype - ISIT_DCPUHW;
-			if((devtable[knt].flags & 0x4000) && devtable[knt].OnReset) {
+			if(dev->Reset) dev->Reset(dev);
+			if(dev->MsgIn) {
 #if DEBUG_DCPUHW == 1
-		fprintf(stderr, "hwmreset: %s %ld\n", devtable[knt].devid_name, h);
+				fprintf(stderr, "hwm-reset: %s %ld\n", devtable[knt].devid_name, h);
 #endif
-				devtable[knt].OnReset(dev, src, mtime);
+				dev->MsgIn(dev, src, msg, mtime);
 			}
 		}
-		return 1;
+		return 0;
 	case 1:
+	case 2:
 		if(h >= hs) {
 #if DEBUG_DCPUHW == 1
-			fprintf(stderr, "hwmhwq: %ld out of range.\n", h);
+			fprintf(stderr, "hwm: %ld out of range.\n", h);
 #endif
 			break;
 		}
+		dev = bus->busdev.table[h];
 		knt = bus->busdev.table[h]->id.objtype - ISIT_DCPUHW;
-#if DEBUG_DCPUHW == 1
-		fprintf(stderr, "hwmhwq: %s %ld %04x : ", devtable[knt].devid_name, h, devtable[knt].flags);
-#endif
-		if(devtable[knt].flags & 0x8000) {
+		if(msg[0] == 1 && devtable[knt].flags & 0x8000) {
 			msg[2] = (uint16_t)(devtable[knt].devid);
 			msg[3] = (uint16_t)(devtable[knt].devid >> 16);
 			msg[4] = devtable[knt].verid;
 			msg[5] = (uint16_t)(devtable[knt].mfgid);
 			msg[6] = (uint16_t)(devtable[knt].mfgid >> 16);
-			r = HWQ_SUCCESS;
+			r = 0;
 		}
-		if(devtable[knt].OnHWQ) {
-			r = devtable[knt].OnHWQ(bus->busdev.table[h], src, msg+2, mtime);
-#if DEBUG_DCPUHW == 1
-		fprintf(stderr, "call: %d", r);
-#endif
-		}
-#if DEBUG_DCPUHW == 1
-		fprintf(stderr, ": %04x %04x %04x %04x %04x \n", msg[2], msg[3], msg[4], msg[5], msg[6]);
-#endif
-		return r;
-	case 2:
-		if(h >= hs) {
-#if DEBUG_DCPUHW == 1
-			fprintf(stderr, "hwmhwq: %ld out of range.\n", h);
-#endif
-			break;
-		}
-		knt = bus->busdev.table[h]->id.objtype - ISIT_DCPUHW;
-		if((devtable[knt].flags & 0x4002) == 0x4002) {
-#if DEBUG_DCPUHW == 1
-			if(!(devtable[knt].flags & 0x0100))
-				fprintf(stderr, "[HWIA %s %04x]\n", devtable[knt].devid_name, devtable[knt].flags);
-#endif
-			r = devtable[knt].OnHWI(bus->busdev.table[h], src, msg+2, mtime);
-		} else {
-#if DEBUG_DCPUHW == 1
-			fprintf(stderr, "[HWIN %s %04x]\n", devtable[knt].devid_name, devtable[knt].flags);
-#endif
-		       r = 0;
+		if(dev->MsgIn) {
+			r = dev->MsgIn(dev, src, msg, mtime);
 		}
 		return r;
+	default:
+		break;
 	}
 	return r;
 }
 
-int HWM_Run(struct isiInfo *info, struct isiSession *ses, struct timespec crun)
+int HWM_Run(struct isiInfo *info, struct timespec crun)
 {
-	size_t i, k;
+	size_t k;
 	size_t hs;
 	struct systemhwstate hws;
-	hws.net = ses;
-	hws.mem = (isiram16)((struct isiCPUInfo *)info->outdev)->mem;
 	struct isiInfo *dev;
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		dev = bus->busdev.table[k];
-		i = dev->id.objtype - ISIT_DCPUHW;
-		if((devtable[i].flags & 0x4004) == 0x4004) {
-			if(devtable[i].OnTick(dev, &hws, crun)) {
+		if(dev->RunCycles) {
+			if(dev->RunCycles(dev, crun)) {
 				info->outdev->MsgIn(info->outdev, dev, &hws.msg, crun);
 			}
 		}
@@ -193,6 +185,9 @@ int HWM_CreateDevice(struct isiInfo *info, const char *cfg)
 		info->rvstate = malloc(rv);
 		memset(info->rvstate, 0, rv);
 	}
+	if(devtable[i].InitDev) {
+		devtable[i].InitDev(info, cfg);
+	}
 	return 0;
 }
 
@@ -207,6 +202,7 @@ int HWM_CreateBus(struct isiInfo *info)
 	info->Reset = NULL;
 	info->MsgIn = HWM_Query;
 	info->Attach = HWM_DeviceAdd;
+	info->Attached = HWM_Attached;
 	return 0;
 }
 

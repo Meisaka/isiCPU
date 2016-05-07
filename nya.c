@@ -67,7 +67,7 @@ int Nya_LEM_SIZE(int t, const char * cfg)
 	}
 }
 
-int Nya_LEM_Init(struct isiInfo *info, const char *cfg)
+static int Nya_LEM_Reset(struct isiInfo *info)
 {
 	struct NyaLEM_rv* dsp;
 	dsp = (struct NyaLEM_rv*)info->rvstate;
@@ -78,14 +78,8 @@ int Nya_LEM_Init(struct isiInfo *info, const char *cfg)
 	return 0;
 }
 
-int Nya_LEM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec crun)
 {
-	return HWQ_SUCCESS;
-}
-
-int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
-{
-	struct isiCPUInfo *l_info = (struct isiCPUInfo*)src;
 	struct NyaLEM_rv* dsp;
 	struct NyaLEM_sv* dspv;
 	struct memory64x16 *mem;
@@ -94,22 +88,23 @@ int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct
 	if(!info) return -1;
 	dsp = (struct NyaLEM_rv*)info->rvstate;
 	dspv = (struct NyaLEM_sv*)info->svstate;
-	mem = (struct memory64x16*)l_info->mem;
-	// TODO - this
-	//fprintf(stderr, "NYALEM: HWI %04x \n", isi->regs[0]);
+	mem = (struct memory64x16*)info->mem;
 	switch(msg[0]) {
 	case 0:
 		dsp->dspmem = msg[1];
 		//fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
 		Nya_LEM_voiddisp(dsp, dspv, mem);
+		isi_set_devmemsync_extent(&info->id, &mem->id, 0, dsp->dspmem, 384);
 		break;
 	case 1: // Map Font
 		dsp->fontmem = msg[1];
 		fprintf(stderr, "NYALEM: Font set to %04x \n", dsp->fontmem);
+		isi_set_devmemsync_extent(&info->id, &mem->id, 1, dsp->fontmem, 256);
 		break;
 	case 2: // Map Palette
 		dsp->palmem = msg[1];
 		fprintf(stderr, "NYALEM: Palette set to %04x \n", dsp->palmem);
+		isi_set_devmemsync_extent(&info->id, &mem->id, 2, dsp->palmem, 16);
 		break;
 	case 3: // Set border
 		dsp->border = msg[1];
@@ -128,6 +123,29 @@ int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct
 	return 0;
 }
 
+int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
+{
+	switch(msg[0]) {
+	case 0: return Nya_LEM_Reset(info);
+	case 1: return 0;
+	case 2: return Nya_LEM_HWI(info, host, msg+2, mtime);
+	case 0x3400:
+	{
+		struct NyaLEM_rv *dsp = (struct NyaLEM_rv*)info->rvstate;
+		struct NyaLEM_sv *dspv = (struct NyaLEM_sv*)info->svstate;
+		int i;
+		fprintf(stderr, "M: %04x \n", dsp->dspmem);
+		for(i = 0; i < 384; i++) {
+			fprintf(stderr,"%04x ",dspv->cachedisp[i]);
+			if(i % 16 == 15) fprintf(stderr,"\n");
+		}
+	}
+		break;
+	default: break;
+	}
+	return 0;
+}
+
 static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struct memory64x16 *mem)
 {
 	int dsl;
@@ -141,27 +159,19 @@ static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struc
 	return 0;
 }
 
-int Nya_LEM_Tick(struct isiInfo *info, struct systemhwstate * isi, struct timespec crun)
+static int Nya_LEM_Tick(struct isiInfo *info, struct timespec crun)
 {
 	struct NyaLEM_rv* dsp;
 	struct NyaLEM_sv* dspv;
 	struct memory64x16 *mem;
 	uint16_t dsa;
-	int dsl, dur;
-	uint16_t ddb[400];
-	int ddi, dss;
+	int dsl;
+	//uint16_t ddb[400];
+	int ddi;
 	if(!info) return -1;
 	dsp = (struct NyaLEM_rv*)info->rvstate;
 	dspv = (struct NyaLEM_sv*)info->svstate;
-	mem = isi->mem;
-	if(isi->msg == 0x3400) {
-		fprintf(stderr, "M: %04x \n", dsp->dspmem);
-		for(dur = 0; dur < 384; dur++) {
-			fprintf(stderr,"%04x ",dspv->cachedisp[dur]);
-			if(dur % 16 == 15) fprintf(stderr,"\n");
-		}
-	}
-	if(!isi->net->sfd) return 0; // quit if no network
+	mem = (isiram16)info->mem;
 	if(info->nrun.tv_sec) {
 		if(crun.tv_sec < info->nrun.tv_sec
 			|| crun.tv_nsec < info->nrun.tv_nsec) {
@@ -174,20 +184,21 @@ int Nya_LEM_Tick(struct isiInfo *info, struct systemhwstate * isi, struct timesp
 	isi_addtime(&info->nrun, 50000000);
 	if(dsp->dspmem) {
 		dsa = dsp->dspmem;
-		dur = 0;
+		//dur = 0;
 		ddi = 0;
-		dss = 0;
+		//dss = 0;
 
-		ddb[0] = 0xE7AA; // Type code
+		//ddb[0] = 0xE7AA; // Type code
 
 		// Simple display delta protocol
 		for(dsl = 0; dsl < 384; dsl++) {
-			dss = dsl;
+			//dss = dsl;
 			while(dsl < 384 && mem->ram[dsa+dsl] != dspv->cachedisp[dsl]) {
-				ddb[5+ddi] = mem->ram[dsa+dsl];
+				//ddb[5+ddi] = mem->ram[dsa+dsl];
 				dspv->cachedisp[dsl] = mem->ram[dsa+dsl];
 				ddi++; dsl++;
 			}
+			/*
 			if(ddi) {
 				ddb[1] = 0; // ID
 				ddb[2] = 0; // ID
@@ -198,9 +209,18 @@ int Nya_LEM_Tick(struct isiInfo *info, struct systemhwstate * isi, struct timesp
 				}
 				ddi = 0;
 			}
+			*/
 		}
 	}
 
+	return 0;
+}
+
+int Nya_LEM_Init(struct isiInfo *info, const char * cfg)
+{
+	info->MsgIn = Nya_LEM_MsgIn;
+	info->Reset = Nya_LEM_Reset;
+	info->RunCycles = Nya_LEM_Tick;
 	return 0;
 }
 

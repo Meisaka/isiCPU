@@ -70,24 +70,44 @@ static void Keyboard_KUp(struct LKBD *kb, int kc)
 	}
 }
 
-
-int Keyboard_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
 {
 	struct LKBD* kyb;
+	uint16_t mout;
 	kyb = (struct LKBD*)info->rvstate;
 	if(!kyb) return 0;
 	switch(msg[0]) {
+	case 2:
+		break; // Handle HWI
+	case 0x20E7:
+		Keyboard_KDown(kyb, msg[1]);
+		if(kyb->imsg) {
+			mout = kyb->imsg;
+			host->MsgIn(host, info, &mout, mtime);
+		}
+		return 0;
+	case 0x20E8:
+		Keyboard_KUp(kyb, msg[1]);
+		if(kyb->imsg) {
+			mout = kyb->imsg;
+			host->MsgIn(host, info, &mout, mtime);
+		}
+		return 0;
+	default:
+		return 0; /* ignore other messages */
+	}
+	switch(msg[2]) {
 	case 0: // Clear
 		kyb->keykount = 0;
 		break;
 	case 1: // Get key pressed [C]
-		msg[2] = Keyboard_get(kyb);
+		msg[4] = Keyboard_get(kyb);
 		break;
 	case 2: // Is key [B] pressed?
-		msg[2] = Keyboard_check(kyb, msg[1]);
+		msg[4] = Keyboard_check(kyb, msg[3]);
 		break;
 	case 3: // Set interupt
-		kyb->imsg = msg[1];
+		kyb->imsg = msg[3];
 		break;
 	default:
 		break;
@@ -95,38 +115,9 @@ int Keyboard_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struc
 	return 0;
 }
 
-int Keyboard_Tick(struct isiInfo *info, struct systemhwstate *isi, struct timespec crun)
+int Keyboard_Init(struct isiInfo *info, const char *cfg)
 {
-	struct timeval ltv;
-	fd_set fds;
-	int i;
-	unsigned char tbf[4];
-	struct LKBD* kyb;
-	kyb = (struct LKBD*)info->rvstate;
-	ltv.tv_sec = 0;
-	ltv.tv_usec = 0;
-	if(!isi->net) return 0;
-	FD_ZERO(&fds);
-	FD_SET(isi->net->sfd, &fds);
-	i = select(isi->net->sfd+1, &fds, NULL, NULL, &ltv);
-	if(i > 0) {
-		i = recv(isi->net->sfd, tbf, 3, 0);
-		if(tbf[0] == 0x080 && tbf[1] == 0x0E7) {
-			Keyboard_KDown(kyb, tbf[2]);
-			if(kyb->imsg) {
-				isi->msg = kyb->imsg;
-				return 1;
-			}
-		}
-		if(tbf[0] == 0x080 && tbf[1] == 0x0E8) {
-			Keyboard_KUp(kyb, tbf[2]);
-			if(kyb->imsg) {
-				isi->msg = kyb->imsg;
-				return 1;
-			}
-		}
-	}
+	info->MsgIn = Keyboard_MsgIn;
 	return 0;
 }
-
 

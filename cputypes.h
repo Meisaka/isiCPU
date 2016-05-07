@@ -45,21 +45,23 @@ struct isiNetSync {
 	uint32_t len[4];
 };
 
-typedef int (*isi_run)(struct isiInfo *, struct isiSession *, struct timespec crun);
-typedef int (*isi_control)(struct isiInfo *);
-typedef int (*isi_attach)(struct isiInfo *to, struct isiInfo *dev);
-typedef int (*isi_message)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, struct timespec mtime);
+typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
+typedef int (*isi_control_call)(struct isiInfo *);
+typedef int (*isi_attach_call)(struct isiInfo *to, struct isiInfo *dev);
+typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, struct timespec mtime);
 
 struct isiInfo {
 	struct objtype id;
-	isi_run RunCycles;
-	isi_message MsgIn;
-	isi_message MsgOut;
-	isi_attach Attach;
-	isi_control Reset;
+	isi_run_call RunCycles;
+	isi_message_call MsgIn;
+	isi_message_call MsgOut;
+	isi_attach_call Attach;
+	isi_attach_call Attached;
+	isi_control_call Reset;
 	struct isiInfo *outdev;
 	void * rvstate;
 	void * svstate;
+	void * mem;
 	struct timespec nrun;
 };
 
@@ -79,7 +81,6 @@ struct isiCPUInfo SUBCLASS(isiInfo) {
 	struct isiInfo i;
 #endif
 	/* CPU specific */
-	void * mem;
 	int ctl;
 	size_t rate;
 	size_t runrate;
@@ -94,17 +95,22 @@ typedef struct memory64x16 {
 	uint32_t info;
 } *isiram16;
 
+/* attach dev to item */
+int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_create_object(int objtype, struct objtype **out);
 void isi_addtime(struct timespec *, size_t nsec);
 int isi_inittable(struct isiDevTable *t);
 int isi_createdev(struct isiInfo **ndev);
 int isi_pushdev(struct isiDevTable *t, struct isiInfo *d);
 
+void isi_synctable_init();
+void isi_debug_dump_synctable();
 int isi_add_memsync(struct objtype *target, uint32_t base, uint32_t extent, size_t rate);
 int isi_add_sync_extent(struct objtype *target, uint32_t base, uint32_t extent);
 int isi_set_sync_extent(struct objtype *target, uint32_t index, uint32_t base, uint32_t extent);
 int isi_add_devsync(struct objtype *target, size_t rate);
 int isi_add_devmemsync(struct objtype *target, struct objtype *memtarget, size_t rate);
+int isi_set_devmemsync_extent(struct objtype *target, struct objtype *memtarget, uint32_t index, uint32_t base, uint32_t extent);
 int isi_remove_sync(struct objtype *target);
 
 #define ISIN_SYNC_NONE 0
