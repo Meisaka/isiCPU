@@ -59,6 +59,8 @@ struct isiSessionTable {
 };
 static struct isiSessionTable allses;
 
+void isi_run_sync();
+
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
 "Options:\n"
@@ -334,6 +336,22 @@ int isi_objtable_add(struct objtype *obj)
 	return 0;
 }
 
+int isi_find_obj(uint32_t id, struct objtype **target)
+{
+	size_t i;
+	if(!id) return -1;
+	for(i = 0; i < allobj.count; i++) {
+		struct objtype *obj = allobj.table[i];
+		if(obj && obj->id == id) {
+			if(target) {
+				*target = obj;
+			}
+			return 0;
+		}
+	}
+	return 1;
+}
+
 int isi_get_type_size(int objtype, size_t *sz)
 {
 	size_t objsize = 0;
@@ -443,7 +461,7 @@ int isi_pushses(struct isiSession *s)
 	return 0;
 }
 
-int isi_remses(struct isiSession *s)
+int isi_delete_ses(struct isiSession *s)
 {
 	if(!s) return -1;
 	struct isiSessionTable *t = &allses;
@@ -456,6 +474,9 @@ int isi_remses(struct isiSession *s)
 		t->table[i] = t->table[i+1];
 		i++;
 	}
+	free(s->in);
+	free(s->out);
+	isi_delete_object(&s->id);
 	return 0;
 }
 
@@ -599,20 +620,100 @@ int handle_newsessions()
 	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
 		return i;
 	}
+	ses->in = (uint8_t*)malloc(8192);
+	ses->out = (uint8_t*)malloc(2048);
 	ses->sfd = fdn;
 	memcpy(&ses->r_addr, &ripn, sizeof(struct sockaddr_in));
 	isi_pushses(ses);
 	return 0;
 }
 
-int handle_session_rd(struct isiSession *ses)
+int session_write(struct isiSession *ses, int len)
 {
-	uint16_t cc;
+	return send(ses->sfd, ses->out, len, 0);
+}
+
+int handle_session_rd(struct isiSession *ses, struct timespec mtime)
+{
 	int i;
-	i = read(ses->sfd, &cc, 2);
-	if(i < 0) { perror("socket read"); return 0; }
-	if(i == 0) return 0;
-	fprintf(stderr, "net-msg: %04x\n", cc);
+	uint32_t l;
+	uint32_t mc;
+	if(ses->rcv < 4) {
+		i = read(ses->sfd, ses->in+ses->rcv, 4-ses->rcv);
+	} else {
+readagain:
+		l = ((*(uint32_t*)ses->in) & 0xfffff);
+		if(ses->rcv < 4+l) {
+			i = read(ses->sfd, ses->in+ses->rcv, (4+l)-ses->rcv);
+		} else {
+			fprintf(stderr, "net-session: improper read\n");
+		}
+	}
+	if(i < 0) { perror("socket read"); return -1; }
+	if(i == 0) { fprintf(stderr, "net-session: empty read\n"); return -1; }
+	if(ses->rcv < 4) {
+		ses->rcv += i;
+		if(ses->rcv >= 4) {
+			l = ((*(uint32_t*)ses->in) & 0xfffff);
+			if(ses->rcv < 4+l) goto readagain;
+		}
+	}
+	ses->rcv += i;
+	if(ses->rcv < 4+l) return 0;
+	mc = *(uint32_t*)ses->in;
+	uint32_t *pm = (uint32_t*)ses->in;
+	uint32_t *pr = (uint32_t*)ses->out;
+	l = mc & 0xfffff; mc >>= 20;
+	/* handle message here */
+	switch(mc) {
+	case 0x010: /* keepalive/ping */
+		break;
+	case 0x011: /* get all accessable objects */
+	{
+		size_t i;
+		uint32_t ec = 0;
+		fprintf(stderr, "net-msg: [%08x]: list obj\n", ses->id.id);
+		for(i = 0; i < allobj.count; i++) {
+			struct objtype *obj = allobj.table[i];
+			if(obj && obj->objtype >= 0x2000) {
+				pr[1+ec] = obj->id;
+				pr[2+ec] = obj->objtype;
+				ec+=2;
+			}
+			if(ec > 160) {
+				pr[0] = 0x20000000 | (ec*4);
+				session_write(ses, 4+(ec*4));
+				ec = 0;
+			}
+		}
+		pr[0] = 0x20100000 | (ec*4);
+		session_write(ses, 4+(ec*4));
+	}
+		break;
+	case 0x080:
+	{
+		struct isiInfo *info;
+		if(l < 6) {
+			fprintf(stderr, "net-msg: [%08x]: short 0x%03x +%05x\n", ses->id.id, mc, l);
+			break;
+		}
+		if(isi_find_obj(pm[1], (struct objtype**)&info)) {
+			fprintf(stderr, "net-msg: [%08x]: not found [%08x]\n", ses->id.id, pm[1]);
+			break;
+		}
+		if(info->id.objtype >= 0x2000) {
+			if(info->MsgIn) {
+				info->MsgIn(info, info->outdev, (uint16_t*)(pm+2), mtime);
+			}
+		}
+	}
+		break;
+	default:
+		fprintf(stderr, "net-session: [%08x]: 0x%03x +%05x\n", ses->id.id, mc, l);
+		break;
+	}
+	/* *** */
+	ses->rcv = 0;
 	return 0;
 }
 
@@ -720,7 +821,6 @@ int main(int argc, char**argv, char**envp)
 	}
 	if(flagsvr) {
 		makewaitserver();
-		sleep(3);
 	}
 
 	sigaction(SIGINT, &hnler, NULL);
@@ -769,6 +869,7 @@ int main(int argc, char**argv, char**envp)
 				ccpi->outdev->RunCycles(ccpi->outdev, CRun);
 			}
 		}
+		isi_run_sync();
 
 		fetchtime(&CRun);
 		if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
@@ -866,7 +967,7 @@ int main(int argc, char**argv, char**envp)
 						} else if(allses.ptable[k].fd == fdlisten) {
 							handle_newsessions();
 						} else if(allses.table[k - extrafds]->sfd == allses.ptable[k].fd) {
-							if(handle_session_rd(allses.table[k - extrafds]))
+							if(handle_session_rd(allses.table[k - extrafds], CRun))
 								goto sessionerror;
 						} else {
 							fprintf(stderr, "netses: session ID error\n");
@@ -879,9 +980,7 @@ int main(int argc, char**argv, char**envp)
 sessionerror:
 				if(etxt) fprintf(stderr, etxt);
 				if(allses.table[k - extrafds]->sfd == allses.ptable[k].fd) {
-					struct isiSession *eses = allses.table[k - extrafds];
-					isi_remses(eses);
-					isi_delete_object(&eses->id);
+					isi_delete_ses(allses.table[k - extrafds]);
 					k = allses.pcount;
 				}
 			}

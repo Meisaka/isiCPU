@@ -192,6 +192,10 @@ int isi_remove_sync(struct objtype *target)
 	return 0;
 }
 
+void isi_run_sync()
+{
+}
+
 void isi_debug_dump_synctable()
 {
 	uint32_t i = 0;

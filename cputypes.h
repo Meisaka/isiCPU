@@ -25,6 +25,9 @@ struct isiSession {
 	struct objtype id;
 	int sfd;
 	struct sockaddr_in r_addr;
+	uint32_t rcv;
+	uint8_t *in;
+	uint8_t *out;
 };
 
 struct isiDevTable {
