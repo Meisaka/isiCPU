@@ -90,11 +90,13 @@ uint16_t DCPU_rram(isiram16 ram, uint16_t a)
 }
 void DCPU_wram(isiram16 ram, uint16_t a, uint16_t v)
 {
-	if(ram->ram[a] ^ v) {
-		ram->ctl[a] |= 1;
-		if(ram->ctl[a] & 2) ram->info |= 1;
+	if(!(ram->ctl[a] & ISI_RAMCTL_RDONLY)) ram->ram[a] = v;
+	if(ram->ram[a] ^ ((uint16_t)ram->ctl[a])) {
+		//ram->ctl[a] |= ISI_RAMCTL_DELTA;
+		if(ram->ctl[a] & ISI_RAMCTL_SYNC) ram->info |= ISI_RAMINFO_SCAN;
+	} else {
+		//ram->ctl[a] &= ~ISI_RAMCTL_DELTA;
 	}
-	if(!(ram->ctl[a] & 4)) ram->ram[a] = v;
 }
 
 // Write referenced B operand

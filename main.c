@@ -44,22 +44,10 @@ static struct isiDevTable alldev;
 static struct isiDevTable allcpu;
 
 uint32_t maxsid = 0;
-static struct isiObjTable {
-	struct objtype ** table;
-	uint32_t count;
-	uint32_t limit;
-} allobj;
+struct isiObjTable allobj;
+struct isiSessionTable allses;
 
-struct isiSessionTable {
-	struct isiSession ** table;
-	uint32_t count;
-	uint32_t limit;
-	struct pollfd * ptable;
-	uint32_t pcount;
-};
-static struct isiSessionTable allses;
-
-void isi_run_sync();
+void isi_run_sync(struct timespec crun);
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
@@ -633,6 +621,33 @@ int session_write(struct isiSession *ses, int len)
 	return send(ses->sfd, ses->out, len, 0);
 }
 
+int session_write_msg(struct isiSession *ses)
+{
+	int len;
+	len = (*(uint32_t*)(ses->out)) & 0xfffff;
+	if(len > 1300) {
+		len = 1300;
+		*(uint32_t*)(ses->out) = ((*(uint32_t*)ses->out) & 0xfff00000) | len;
+	}
+	return send(ses->sfd, ses->out, 4+len, 0);
+}
+
+int session_write_msgex(struct isiSession *ses, void *buf)
+{
+	int len;
+	len = (*(uint32_t*)(buf)) & 0xfffff;
+	if(len > 1300) {
+		len = 1300;
+		*(uint32_t*)(buf) = ((*(uint32_t*)buf) & 0xfff00000) | len;
+	}
+	return send(ses->sfd, (char*)buf, 4+len, 0);
+}
+
+int session_write_buf(struct isiSession *ses, void *buf, int len)
+{
+	return send(ses->sfd, (char*)buf, len, 0);
+}
+
 int handle_session_rd(struct isiSession *ses, struct timespec mtime)
 {
 	int i;
@@ -689,6 +704,9 @@ readagain:
 		pr[0] = 0x20100000 | (ec*4);
 		session_write(ses, 4+(ec*4));
 	}
+		break;
+	case 0x012: /* sync everything! */
+		isi_resync_all();
 		break;
 	case 0x080:
 	{
@@ -869,7 +887,8 @@ int main(int argc, char**argv, char**envp)
 				ccpi->outdev->RunCycles(ccpi->outdev, CRun);
 			}
 		}
-		isi_run_sync();
+		fetchtime(&CRun);
+		isi_run_sync(CRun);
 
 		fetchtime(&CRun);
 		if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output

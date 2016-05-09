@@ -50,6 +50,13 @@ struct NyaLEM_rv {
 	unsigned short border;
 	unsigned short version;
 };
+ISIREFLECT(struct NyaLEM_rv,
+	ISIR(NyaLEM_rv, unsigned short, dspmem)
+	ISIR(NyaLEM_rv, unsigned short, fontmem)
+	ISIR(NyaLEM_rv, unsigned short, palmem)
+	ISIR(NyaLEM_rv, unsigned short, border)
+	ISIR(NyaLEM_rv, unsigned short, version)
+)
 struct NyaLEM_sv {
 	unsigned short cachepal[16];
 	unsigned short cachefont[256];
@@ -94,7 +101,10 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 		dsp->dspmem = msg[1];
 		//fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
 		Nya_LEM_voiddisp(dsp, dspv, mem);
-		isi_set_devmemsync_extent(&info->id, &mem->id, 0, dsp->dspmem, 384);
+		if(dsp->dspmem) {
+			isi_add_devmemsync(&info->id, &mem->id, 50000000);
+			isi_set_devmemsync_extent(&info->id, &mem->id, 0, dsp->dspmem, 384);
+		}
 		break;
 	case 1: // Map Font
 		dsp->fontmem = msg[1];
@@ -108,6 +118,7 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 		break;
 	case 3: // Set border
 		dsp->border = msg[1];
+		isi_resync_dev(&info->id);
 		break;
 	case 4: // Mem Dump Font
 		dma = msg[1];
@@ -221,6 +232,7 @@ int Nya_LEM_Init(struct isiInfo *info, const char * cfg)
 	info->MsgIn = Nya_LEM_MsgIn;
 	info->Reset = Nya_LEM_Reset;
 	info->RunCycles = Nya_LEM_Tick;
+	info->rvproto = &ISIREFNAME(struct NyaLEM_rv);
 	return 0;
 }
 
