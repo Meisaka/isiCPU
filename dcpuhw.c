@@ -40,8 +40,6 @@ int HWM_FreeAll(struct isiInfo *info)
 int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 {
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
-	dev->outdev = info->outdev;
-	dev->mem = info->outdev->mem;
 	isi_pushdev(&bus->busdev, dev);
 #if DEBUG_DCPUHW == 1
 	fprintf(stderr, "hwm: adding device c=%d\n", bus->busdev.count);
@@ -60,8 +58,8 @@ int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		if(bus->busdev.table[k]) {
-			bus->busdev.table[k]->outdev = dev;
-			bus->busdev.table[k]->mem = dev->mem;
+			bus->busdev.table[k]->mem = info->mem;
+			bus->busdev.table[k]->hostcpu = info->hostcpu;
 		}
 	}
 	return 0;
@@ -127,16 +125,13 @@ int HWM_Run(struct isiInfo *info, struct timespec crun)
 {
 	size_t k;
 	size_t hs;
-	struct systemhwstate hws;
 	struct isiInfo *dev;
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		dev = bus->busdev.table[k];
 		if(dev->RunCycles) {
-			if(dev->RunCycles(dev, crun)) {
-				info->outdev->MsgIn(info->outdev, dev, &hws.msg, crun);
-			}
+			dev->RunCycles(dev, crun);
 		}
 	}
 	return 0;

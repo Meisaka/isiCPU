@@ -97,7 +97,7 @@ int imva_raster(struct imva_nvstate *imva, uint16_t *ram, uint32_t *rgba, uint32
 		for(cell = 40; cell--; ) {
 			v = (IMVA_RD(ram,raddr) >> of) & 0x00ff;
 			if(raddr == ovo || z) {
-				vv = IMVA_RD(ram,ova + z);
+				vv = IMVA_RD(ram,ova + z) >> of;
 				ovflag = 1;
 				z ^= 1;
 				switch(omode) {

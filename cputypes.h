@@ -76,6 +76,7 @@ struct isiInfo {
 	isi_run_call RunCycles;
 	isi_message_call MsgIn;
 	isi_message_call MsgOut;
+	isi_attach_call QueryAttach;
 	isi_attach_call Attach;
 	isi_attach_call Attached;
 	isi_control_call Reset;
@@ -85,6 +86,7 @@ struct isiInfo {
 	struct isiReflection *rvproto;
 	struct isiReflection *svproto;
 	void * mem;
+	struct isiInfo * hostcpu;
 	struct timespec nrun;
 };
 
@@ -166,8 +168,10 @@ int isi_remove_sync(struct objtype *target);
 #define ISIT_MEM6416   0x2001
 #define ISIT_CPU       0x3000
 #define ISIT_DCPU      0x3001
+#define ISIT_ENDCPU    0x4000
 #define ISIT_BUSDEV    0x4000
 #define ISIT_DCPUBUS   0x4001
+#define ISIT_ENDBUSDEV 0x5000
 #define ISIT_DCPUHW    0x5000
 
 void DCPU_init(struct isiInfo *, isiram16 ram);

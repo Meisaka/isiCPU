@@ -59,8 +59,8 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 	if(!(clk->raccum++ < clk->rate)) { /* handle divided rate */
 		clk->raccum = 0;
 		clk->ctime++;
-		if(clk->iword && info->outdev && info->outdev->MsgIn) {
-			info->outdev->MsgIn(info->outdev, info, &clk->iword, info->nrun);
+		if(clk->iword && info->hostcpu && info->hostcpu->MsgIn) {
+			info->hostcpu->MsgIn(info->hostcpu, info, &clk->iword, info->nrun);
 		}
 	}
 	if(clk->accum++ < 15) { /* magically sync the 60Hz base clock to 1 second */

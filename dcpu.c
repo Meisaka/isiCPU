@@ -25,8 +25,6 @@ static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 {
 	if(!info || !dev) return -1;
 	if(dev->id.objtype != ISIT_DCPUBUS) return -1;
-	info->outdev = dev;
-	dev->outdev = info;
 	return 0;
 }
 
@@ -40,7 +38,7 @@ void DCPU_init(struct isiInfo *info, isiram16 ram)
 	info->RunCycles = DCPU_run;
 	info->Reset = DCPU_reset;
 	info->MsgIn = DCPU_interrupt;
-	info->Attach = DCPU_AttachBus;
+	info->QueryAttach = DCPU_AttachBus;
 	pr->memptr = ram;
 	if(!info->mem) info->mem = ram;
 }

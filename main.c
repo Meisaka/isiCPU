@@ -298,8 +298,32 @@ void fetchtime(struct timespec * t)
 int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 {
 	if(!item || !dev) return -1;
+	if(item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV) {
+	} else {
+		item->outdev = dev;
+	}
+	dev->outdev = item;
+	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
+		dev->hostcpu = item;
+		dev->mem = item->mem;
+	} else {
+		dev->hostcpu = item->hostcpu;
+		dev->mem = item->mem;
+	}
 	if(item->Attach) item->Attach(item, dev);
 	if(dev->Attached) dev->Attached(dev, item);
+	if(dev->id.objtype >= ISIT_BUSDEV && dev->id.objtype < ISIT_ENDBUSDEV) {
+		size_t k;
+		size_t hs;
+		struct isiBusInfo *bus = (struct isiBusInfo*)dev;
+		hs = bus->busdev.count;
+		for(k = 0; k < hs; k++) {
+			if(bus->busdev.table[k]) {
+				bus->busdev.table[k]->mem = dev->mem;
+				bus->busdev.table[k]->hostcpu = dev->hostcpu;
+			}
+		}
+	}
 	return 0;
 }
 
@@ -507,7 +531,6 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	DCPU_init((struct isiInfo*)cpu, nmem);
 	isi_create_object(ISIT_BUSDEV, (struct objtype**)&bus);
 	HWM_CreateBus(bus);
-	isi_attach((struct isiInfo*)cpu, bus);
 	isi_createdev(&ninfo);
 	HWM_CreateDevice(ninfo, "nya_lem");
 	isi_attach(bus, ninfo);
@@ -533,6 +556,7 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 		free(ist);
 		free(rom);
 	}
+	isi_attach((struct isiInfo*)cpu, bus);
 	return 0;
 }
 
