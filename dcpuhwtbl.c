@@ -7,6 +7,7 @@
 ISIHW_DEF(Keyboard,I,S);
 ISIHW_DEF(Clock,I,S);
 ISIHW_DEF(Nya_LEM,I,S);
+ISIHW_DEF(Disk_M35FD,I,S);
 ISIHW_DEF(EEROM,I,S);
 /*
  * Feature Codes are [I]nit [R]eset [H]WI [T]ick [S]IZE [P]ower
@@ -30,8 +31,8 @@ struct stdevtable devtable[] = {
 {0xE006,0x1802,0x7349f615,MF_NYAE,"nya_lem","Nya LEM 1802",
 	ISIHWT_IS(Nya_LEM)},
 
-{0x8000,0x000b,0x4fd524c5,MF_MACK,"mack_35fd","Mackapar M35FD",
-	NULL,NULL},
+{0xE000,0x000b,0x4fd524c5,MF_MACK,"mack_35fd","Mackapar M35FD",
+	ISIHWT_IS(Disk_M35FD)},
 
 {0x8000,0x0003,0x42babf3c,MF_MACK,"mack_sped3","3D Display",
 	NULL,NULL},

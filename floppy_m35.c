@@ -1,0 +1,176 @@
+
+#include "dcpuhw.h"
+
+#define ERR_M35_NONE 0
+#define ERR_M35_BUSY 1
+#define ERR_M35_NO_MEDIA 2
+#define ERR_M35_PROTECT 3
+#define ERR_M35_EJECT 4
+#define ERR_M35_SECTOR 5
+#define ERR_M35_BROKEN 0xffff
+
+/* state while this device exists/active (runtime volatile) */
+struct Disk_M35FD_rvstate {
+	uint32_t floppy;
+	uint16_t track;
+	uint16_t sector;
+	uint16_t seektrack;
+	uint16_t seeksector;
+	uint16_t rwaddr;
+	uint16_t iword;
+	uint16_t oper;
+	uint16_t errcode;
+};
+
+/* state while running on this server (server volatile) */
+struct Disk_M35FD_svstate {
+};
+
+int Disk_M35FD_SIZE(int t, const char *cfg)
+{
+	if(t == 0) return sizeof(struct Disk_M35FD_rvstate);
+	if(t == 1) return sizeof(struct Disk_M35FD_svstate);
+	return 0;
+}
+
+static int Disk_M35FD_Reset(struct isiInfo *info)
+{
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	dev->errcode = 0;
+	dev->iword = 0;
+	dev->oper = 0;
+	dev->seektrack = 0;
+	dev->seeksector = 0;
+	dev->track = 400;
+	dev->sector = 0;
+	return 0;
+}
+
+static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
+{
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	if(dev->iword) {
+		if(info->hostcpu && info->hostcpu->MsgIn) {
+			info->hostcpu->MsgIn(info->hostcpu, info, &dev->iword, *mtime);
+		}
+	}
+}
+
+static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+{
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	uint16_t lerr;
+	switch(msg[0]) {
+	case 0:
+		if(dev->floppy) {
+			if(dev->oper) {
+				msg[1] = 3;
+			} else {
+				msg[1] = 2; // TODO floppy
+			}
+		} else {
+			msg[1] = 0;
+		}
+		msg[2] = dev->errcode;
+		if(dev->errcode) Disk_M35FD_statechange(info, &crun);
+		dev->errcode = ERR_M35_NONE;
+		break;
+	case 1:
+		dev->iword = msg[3];
+		break;
+	case 2:
+		msg[1] = 0;
+		lerr = dev->errcode;
+		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
+		else if(!dev->floppy) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
+		else {
+			dev->seeksector = msg[3];
+			dev->seektrack = dev->seeksector / 18;
+			dev->rwaddr = msg[4];
+			dev->oper = 1;
+			msg[1] = 1;
+			Disk_M35FD_statechange(info, &crun);
+		}
+		if(lerr != dev->errcode) Disk_M35FD_statechange(info, &crun);
+		break;
+	case 3:
+		msg[1] = 0;
+		lerr = dev->errcode;
+		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
+		else if(!dev->floppy) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
+		else if(0) dev->errcode = ERR_M35_PROTECT; /* TODO write_protect */
+		else {
+			dev->seeksector = msg[3];
+			dev->seektrack = dev->seeksector / 18;
+			dev->rwaddr = msg[4];
+			dev->oper = 1;
+			msg[1] = 1;
+			Disk_M35FD_statechange(info, &crun);
+		}
+		if(lerr != dev->errcode) Disk_M35FD_statechange(info, &crun);
+		break;
+	}
+	return 0;
+}
+
+static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
+{
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	while(isi_time_lt(&info->nrun, &crun)) {
+		if(dev->oper) {
+			if(!dev->floppy) {
+				dev->errcode = ERR_M35_EJECT;
+				dev->oper = 0;
+				Disk_M35FD_statechange(info, &info->nrun);
+				continue;
+			}
+			if(dev->seektrack != dev->track) {
+				isi_addtime(&info->nrun, 2400000);
+				dev->track += (dev->seektrack < dev->track) ?-1:1;
+				dev->sector += 73;
+				dev->sector %= 18;
+			} else {
+				dev->sector++;
+				dev->sector %= 18;
+				isi_addtime(&info->nrun, 32573);
+				if((dev->seeksector + 1) % 18 == dev->sector) {
+					/* read success */
+					dev->oper = 0;
+					Disk_M35FD_statechange(info, &info->nrun);
+				}
+			}
+		} else {
+			if(!info->nrun.tv_sec) {
+				info->nrun.tv_sec = crun.tv_sec;
+				info->nrun.tv_nsec = crun.tv_nsec;
+			}
+			isi_addtime(&info->nrun, 50000000);
+			dev->sector += 1535;
+			dev->sector %= 18;
+		}
+	}
+	return 0;
+}
+
+static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+{
+	switch(msg[0]) { /* message type, msg[1] is device index */
+		/* these should return 0 if they don't have function calls */
+	case 0: return 0; /* CPU finished reset */
+	case 1: return 0; /* HWQ executed */
+	case 2: return Disk_M35FD_HWI(info, src, msg+2, mtime); /* HWI executed */
+	default: break;
+	}
+	return 1;
+}
+
+int Disk_M35FD_Init(struct isiInfo *info, const char *cfg)
+{
+	info->Reset = Disk_M35FD_Reset; /* power on reset */
+	info->MsgIn = Disk_M35FD_MsgIn; /* message from CPU or network */
+	info->RunCycles = Disk_M35FD_Tick; /* scheduled runtime */
+	return 0;
+}
+

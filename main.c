@@ -557,6 +557,11 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 		free(rom);
 	}
 	isi_attach((struct isiInfo*)cpu, bus);
+
+	isi_createdev(&ninfo);
+	HWM_CreateDevice(ninfo, "mack_35fd");
+	isi_attach(bus, ninfo);
+
 	return 0;
 }
 

@@ -1,3 +1,7 @@
+#!/bin/sh
+
+NAME=$1
+cat <<ENDOFLINE
 
 #include "dcpuhw.h"
 
@@ -70,4 +74,6 @@ int ${NAME}_Init(struct isiInfo *info, const char *cfg)
 	info->RunCycles = ${NAME}_Tick; /* scheduled runtime */
 	return 0;
 }
+
+ENDOFLINE
 
