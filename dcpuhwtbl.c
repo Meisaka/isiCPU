@@ -5,6 +5,7 @@
 
 /* Hardware functions */
 ISIHW_DEF(Keyboard,I,S);
+ISIHW_DEF(Clock,I,S);
 ISIHW_DEF(Nya_LEM,I,S);
 ISIHW_DEF(EEROM,I,S);
 /*
@@ -23,8 +24,8 @@ struct stdevtable devtable[] = {
 {0xE107,0x0001,0x30cf7406,MF_ECIV,"keyboard","Generic Keyboard",
 	ISIHWT_IS(Keyboard)},
 
-{0xC000,0x0001,0x12d0b402,MF_ECIV,"clock","Generic Clock",
-	NULL,NULL},
+{0xE000,0x0001,0x12d0b402,MF_ECIV,"clock","Generic Clock",
+	ISIHWT_IS(Clock)},
 
 {0xE006,0x1802,0x7349f615,MF_NYAE,"nya_lem","Nya LEM 1802",
 	ISIHWT_IS(Nya_LEM)},

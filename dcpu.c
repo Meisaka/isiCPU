@@ -342,7 +342,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 	} else {
 		ccq = l_info->rate;
 	}
-	while(ccq && (info->nrun.tv_sec < crun.tv_sec || info->nrun.tv_nsec < crun.tv_nsec)) {
+	while(ccq && isi_time_lt(&info->nrun, &crun)) {
 
 	if(pr->MODE == BURNING) {
 		cycl += 3;

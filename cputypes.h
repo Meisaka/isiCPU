@@ -127,6 +127,7 @@ typedef struct memory64x16 {
 int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_create_object(int objtype, struct objtype **out);
 void isi_addtime(struct timespec *, size_t nsec);
+int isi_time_lt(struct timespec *, struct timespec *);
 int isi_inittable(struct isiDevTable *t);
 int isi_createdev(struct isiInfo **ndev);
 int isi_pushdev(struct isiDevTable *t, struct isiInfo *d);

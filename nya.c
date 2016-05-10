@@ -57,19 +57,11 @@ ISIREFLECT(struct NyaLEM_rv,
 	ISIR(NyaLEM_rv, unsigned short, border)
 	ISIR(NyaLEM_rv, unsigned short, version)
 )
-struct NyaLEM_sv {
-	unsigned short cachepal[16];
-	unsigned short cachefont[256];
-	unsigned short cachedisp[384];
-};
-
-static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struct memory64x16 *mem);
 
 int Nya_LEM_SIZE(int t, const char * cfg)
 {
 	switch(t) {
 	case 0: return sizeof(struct NyaLEM_rv);
-	case 1: return sizeof(struct NyaLEM_sv);
 	default: return 0;
 	}
 }
@@ -88,19 +80,15 @@ static int Nya_LEM_Reset(struct isiInfo *info)
 static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec crun)
 {
 	struct NyaLEM_rv* dsp;
-	struct NyaLEM_sv* dspv;
 	struct memory64x16 *mem;
 	unsigned short dma;
 	int i;
 	if(!info) return -1;
 	dsp = (struct NyaLEM_rv*)info->rvstate;
-	dspv = (struct NyaLEM_sv*)info->svstate;
 	mem = (struct memory64x16*)info->mem;
 	switch(msg[0]) {
 	case 0:
 		dsp->dspmem = msg[1];
-		//fprintf(stderr, "NYALEM: Video set to %04x \n", dsp->dspmem);
-		Nya_LEM_voiddisp(dsp, dspv, mem);
 		if(dsp->dspmem) {
 			isi_add_devmemsync(&info->id, &mem->id, 50000000);
 			isi_set_devmemsync_extent(&info->id, &mem->id, 0, dsp->dspmem, 384);
@@ -140,90 +128,8 @@ int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, str
 	case 0: return Nya_LEM_Reset(info);
 	case 1: return 0;
 	case 2: return Nya_LEM_HWI(info, host, msg+2, mtime);
-	case 0x3400:
-	{
-		struct NyaLEM_rv *dsp = (struct NyaLEM_rv*)info->rvstate;
-		struct NyaLEM_sv *dspv = (struct NyaLEM_sv*)info->svstate;
-		int i;
-		fprintf(stderr, "M: %04x \n", dsp->dspmem);
-		for(i = 0; i < 384; i++) {
-			fprintf(stderr,"%04x ",dspv->cachedisp[i]);
-			if(i % 16 == 15) fprintf(stderr,"\n");
-		}
-	}
-		break;
 	default: break;
 	}
-	return 0;
-}
-
-static int Nya_LEM_voiddisp(struct NyaLEM_rv *dsp, struct NyaLEM_sv *dspv, struct memory64x16 *mem)
-{
-	int dsl;
-	uint16_t dsa;
-	if(dsp->dspmem) {
-		dsa = dsp->dspmem;
-		for(dsl = 0; dsl < 384; dsl++) {
-			dspv->cachedisp[dsl] = mem->ram[dsa + dsl] ^ 1;
-		}
-	}
-	return 0;
-}
-
-static int Nya_LEM_Tick(struct isiInfo *info, struct timespec crun)
-{
-	struct NyaLEM_rv* dsp;
-	struct NyaLEM_sv* dspv;
-	struct memory64x16 *mem;
-	uint16_t dsa;
-	int dsl;
-	//uint16_t ddb[400];
-	int ddi;
-	if(!info) return -1;
-	dsp = (struct NyaLEM_rv*)info->rvstate;
-	dspv = (struct NyaLEM_sv*)info->svstate;
-	mem = (isiram16)info->mem;
-	if(info->nrun.tv_sec) {
-		if(crun.tv_sec < info->nrun.tv_sec
-			|| crun.tv_nsec < info->nrun.tv_nsec) {
-			return 0;
-		}
-	} else {
-		info->nrun.tv_sec = crun.tv_sec;
-		info->nrun.tv_nsec = crun.tv_nsec;
-	}
-	isi_addtime(&info->nrun, 50000000);
-	if(dsp->dspmem) {
-		dsa = dsp->dspmem;
-		//dur = 0;
-		ddi = 0;
-		//dss = 0;
-
-		//ddb[0] = 0xE7AA; // Type code
-
-		// Simple display delta protocol
-		for(dsl = 0; dsl < 384; dsl++) {
-			//dss = dsl;
-			while(dsl < 384 && mem->ram[dsa+dsl] != dspv->cachedisp[dsl]) {
-				//ddb[5+ddi] = mem->ram[dsa+dsl];
-				dspv->cachedisp[dsl] = mem->ram[dsa+dsl];
-				ddi++; dsl++;
-			}
-			/*
-			if(ddi) {
-				ddb[1] = 0; // ID
-				ddb[2] = 0; // ID
-				ddb[3] = dss; // address
-				ddb[4] = ddi; // length (words)
-				if(isi->net) {
-					write(isi->net->sfd, (char*)ddb, 10+(ddi*2));
-				}
-				ddi = 0;
-			}
-			*/
-		}
-	}
-
 	return 0;
 }
 
@@ -231,7 +137,6 @@ int Nya_LEM_Init(struct isiInfo *info, const char * cfg)
 {
 	info->MsgIn = Nya_LEM_MsgIn;
 	info->Reset = Nya_LEM_Reset;
-	info->RunCycles = Nya_LEM_Tick;
 	info->rvproto = &ISIREFNAME(struct NyaLEM_rv);
 	return 0;
 }

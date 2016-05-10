@@ -253,7 +253,7 @@ void isi_run_sync(struct timespec crun)
 		struct memory64x16 *mem = 0;
 		struct isiInfo *dev = 0;
 		if(!ns) continue;
-		if(!(ns->nrun.tv_sec < crun.tv_sec || ns->nrun.tv_nsec < crun.tv_nsec))
+		if(!isi_time_lt(&ns->nrun, &crun))
 			continue;
 		if(ns->ctl) { /* check cache indexes */
 			if((ns->ctl & 1) && (
@@ -399,7 +399,7 @@ void isi_run_sync(struct timespec crun)
 		}
 		isi_addtime(&ns->nrun, ns->rate);
 		k = 10;
-		while(--k && (ns->nrun.tv_sec < crun.tv_sec || ns->nrun.tv_nsec < crun.tv_nsec)) {
+		while(--k && isi_time_lt(&ns->nrun, &crun)) {
 			isi_addtime(&ns->nrun, ns->rate);
 		}
 		if(!k) {

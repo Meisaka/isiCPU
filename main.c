@@ -398,11 +398,15 @@ void isi_addtime(struct timespec * t, size_t nsec) {
 	asec  = nsec / 1000000000;
 	ansec = nsec % 1000000000;
 	t->tv_nsec += ansec;
-	while(t->tv_nsec > 1000000000) {
+	while(t->tv_nsec >= 1000000000) {
 		t->tv_nsec -= 1000000000;
 		asec++;
 	}
 	t->tv_sec += asec;
+}
+
+int isi_time_lt(struct timespec *a, struct timespec *b) {
+	return (a->tv_sec < b->tv_sec) || ((a->tv_sec == b->tv_sec) && (a->tv_nsec < b->tv_nsec));
 }
 
 void isi_setrate(struct isiCPUInfo *info, size_t rate) {
@@ -507,6 +511,11 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	isi_createdev(&ninfo);
 	HWM_CreateDevice(ninfo, "nya_lem");
 	isi_attach(bus, ninfo);
+
+	isi_createdev(&ninfo);
+	HWM_CreateDevice(ninfo, "clock");
+	isi_attach(bus, ninfo);
+
 	isi_createdev(&ninfo);
 	HWM_CreateDevice(ninfo, "keyboard");
 	isi_attach(bus, ninfo);
@@ -867,7 +876,7 @@ int main(int argc, char**argv, char**envp)
 			int ccq = 0;
 			int tcc = numberofcpus * 2;
 			if(tcc < 20) tcc = 20;
-			while(ccq < tcc && (ccpi->nrun.tv_sec < CRun.tv_sec || ccpi->nrun.tv_nsec < CRun.tv_nsec)) {
+			while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
 				sts.quanta++;
 				ccpi->RunCycles(ccpi, CRun);
 				//TODO some hardware may need to work at the same time
