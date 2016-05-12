@@ -80,7 +80,8 @@ struct isiInfo {
 	isi_attach_call Attach;
 	isi_attach_call Attached;
 	isi_control_call Reset;
-	struct isiInfo *outdev;
+	struct isiInfo *updev;
+	struct isiInfo *dndev;
 	void * rvstate;
 	void * svstate;
 	struct isiReflection *rvproto;

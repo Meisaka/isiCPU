@@ -73,7 +73,6 @@ static void Keyboard_KUp(struct LKBD *kb, int kc)
 static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
 {
 	struct LKBD* kyb;
-	uint16_t mout;
 	kyb = (struct LKBD*)info->rvstate;
 	if(!kyb) return 0;
 	switch(msg[0]) {
@@ -82,15 +81,17 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	case 0x20E7:
 		Keyboard_KDown(kyb, msg[1]);
 		if(kyb->imsg) {
-			mout = kyb->imsg;
-			host->MsgIn(host, info, &mout, mtime);
+			if(info->hostcpu && info->hostcpu->MsgIn) {
+				info->hostcpu->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
+			} else {
+				fprintf(stderr, "Keyboard Interrupt dropped!\n");
+			}
 		}
 		return 0;
 	case 0x20E8:
 		Keyboard_KUp(kyb, msg[1]);
-		if(kyb->imsg) {
-			mout = kyb->imsg;
-			host->MsgIn(host, info, &mout, mtime);
+		if(kyb->imsg && info->hostcpu && info->hostcpu->MsgIn) {
+			info->hostcpu->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
 		}
 		return 0;
 	default:

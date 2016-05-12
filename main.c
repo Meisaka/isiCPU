@@ -48,6 +48,7 @@ struct isiObjTable allobj;
 struct isiSessionTable allses;
 
 void isi_run_sync(struct timespec crun);
+int isi_scan_dir();
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
@@ -159,6 +160,7 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 		}
 	}
 	*nmem = mem;
+	fprintf(stderr, "loaded %lu bytes\n", f);
 	if(nsize) *nsize = f;
 	return 0;
 }
@@ -300,9 +302,9 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 	if(!item || !dev) return -1;
 	if(item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV) {
 	} else {
-		item->outdev = dev;
+		item->dndev = dev;
 	}
-	dev->outdev = item;
+	dev->updev = item;
 	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
 		dev->hostcpu = item;
 		dev->mem = item->mem;
@@ -551,7 +553,7 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 		isi_createdev(&ninfo);
 		HWM_CreateDevice(ninfo, ist);
 		memcpy(((char*)ninfo->rvstate)+2, rom, rsize);
-		*((uint16_t*)ninfo->rvstate) = rsize;
+		*((uint16_t*)ninfo->rvstate) = rsize >> 1;
 		isi_attach(bus, ninfo);
 		free(ist);
 		free(rom);
@@ -759,7 +761,7 @@ readagain:
 		}
 		if(info->id.objtype >= 0x2000) {
 			if(info->MsgIn) {
-				info->MsgIn(info, info->outdev, (uint16_t*)(pm+2), mtime);
+				info->MsgIn(info, info->updev, (uint16_t*)(pm+2), mtime);
 			}
 		}
 	}
@@ -795,6 +797,9 @@ static int parse_args(int argc, char**argv)
 				case 'm':
 					softcpumax = CPUSMAX;
 					softcpumin = CPUSMIN;
+					break;
+				case 'l':
+					isi_scan_dir();
 					break;
 				case 'p':
 					k = -1;
@@ -921,8 +926,8 @@ int main(int argc, char**argv, char**envp)
 			sts.cpusched++;
 			fetchtime(&CRun);
 
-			if(ccpi->outdev && ccpi->outdev->RunCycles) {
-				ccpi->outdev->RunCycles(ccpi->outdev, CRun);
+			if(ccpi->dndev && ccpi->dndev->RunCycles) {
+				ccpi->dndev->RunCycles(ccpi->dndev, CRun);
 			}
 		}
 		fetchtime(&CRun);

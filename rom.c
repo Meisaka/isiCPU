@@ -26,7 +26,7 @@ static int EEROM_Reset(struct isiInfo *info, struct isiInfo *host, struct timesp
 	memcpy(
 		((isiram16)info->mem)->ram,
 		((struct EEROM_rvstate *)info->rvstate)+1,
-		((struct EEROM_rvstate *)info->rvstate)->sz
+		((struct EEROM_rvstate *)info->rvstate)->sz << 1
 	      );
 	return 0;
 }
@@ -44,7 +44,7 @@ static int EEROM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 		memcpy(
 			((isiram16)info->mem)->ram,
 			((struct EEROM_rvstate *)info->rvstate)+1,
-			((struct EEROM_rvstate *)info->rvstate)->sz
+			((struct EEROM_rvstate *)info->rvstate)->sz << 1
 		      );
 		break;
 	case 1:

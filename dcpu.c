@@ -59,9 +59,9 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->cycl = 0;
 	pr->IQC = 0;
 	pr->msg = 0;
-	if((info->outdev)
-		&& (info->outdev->MsgIn)
-		&& (info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun) == 0)) {
+	if((info->dndev)
+		&& (info->dndev->MsgIn)
+		&& (info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
 		pr->hwcount = pr->dai;
 	}
 	return 0;
@@ -419,9 +419,9 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				alu1.u = DCPU_deref(oa, pr, ram);
 				pr->msg = 1;
 				pr->dai = alu1.u;
-				if((info->outdev)
-					&& (info->outdev->MsgIn)
-					&& (info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun) == 0)) {
+				if((info->dndev)
+					&& (info->dndev->MsgIn)
+					&& (info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -435,9 +435,9 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				//pr->MODE |= DCPUMODE_EXTINT;
 				pr->msg = 2;
 				pr->dai = alu1.u;
-				if((info->outdev)
-					&& (info->outdev->MsgIn)
-					&& (op = info->outdev->MsgIn(info->outdev, info, &pr->msg, info->nrun))) {
+				if((info->dndev)
+					&& (info->dndev->MsgIn)
+					&& (op = info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
