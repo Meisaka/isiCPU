@@ -80,6 +80,7 @@ struct isiInfo {
 	isi_attach_call Attach;
 	isi_attach_call Attached;
 	isi_control_call Reset;
+	isi_control_call Delete;
 	struct isiInfo *updev;
 	struct isiInfo *dndev;
 	void * rvstate;
@@ -94,10 +95,28 @@ struct isiInfo {
 struct isiBusInfo SUBCLASS(isiInfo) {
 	/* isiInfo */
 #ifndef __cplusplus
-	struct objtype id;
 	struct isiInfo i;
 #endif
 	struct isiDevTable busdev;
+};
+
+struct isiDisk SUBCLASS(isiInfo) {
+	/* isiInfo */
+#ifndef __cplusplus
+	struct isiInfo i;
+#endif
+	int fd;
+	uint64_t diskid;
+	uint32_t block;
+};
+struct disk_svstate {
+	char block[4096];
+	char dblock[4096];
+};
+struct isiDiskSeekMsg {
+	uint16_t mcode;
+	uint16_t ex;
+	uint32_t block;
 };
 
 struct isiCPUInfo SUBCLASS(isiInfo) {
@@ -126,14 +145,27 @@ typedef struct memory64x16 {
 #define ISI_RAMCTL_RDONLY (1<<18)
 #define ISI_RAMINFO_SCAN 1
 
+uint16_t isi_cpu_rdmem(isiram16 ram, uint16_t a);
+void isi_cpu_wrmem(isiram16 ram, uint16_t a, uint16_t v);
+uint16_t isi_hw_rdmem(isiram16 ram, uint16_t a);
+void isi_hw_wrmem(isiram16 ram, uint16_t a, uint16_t v);
+
 /* attach dev to item */
 int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_create_object(int objtype, struct objtype **out);
-void isi_addtime(struct timespec *, size_t nsec);
-int isi_time_lt(struct timespec *, struct timespec *);
-int isi_inittable(struct isiDevTable *t);
+int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk);
 int isi_createdev(struct isiInfo **ndev);
 int isi_pushdev(struct isiDevTable *t, struct isiInfo *d);
+
+void isi_addtime(struct timespec *, size_t nsec);
+int isi_time_lt(struct timespec *, struct timespec *);
+
+int isi_inittable(struct isiDevTable *t);
+
+int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize);
+int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsize);
+int isi_text_dec(const char *text, int len, int limit, void *vv, int olen);
+int isi_disk_getblock(struct isiInfo *disk, void **blockaddr);
 
 int session_write(struct isiSession *, int len);
 int session_write_msg(struct isiSession *);
@@ -167,6 +199,7 @@ int isi_remove_sync(struct objtype *target);
 #define ISIT_SESSION   0x1000
 #define ISIT_NETSYNC   0x1001
 #define ISIT_MEM6416   0x2001
+#define ISIT_DISK      0x2fff
 #define ISIT_CPU       0x3000
 #define ISIT_DCPU      0x3001
 #define ISIT_ENDCPU    0x4000

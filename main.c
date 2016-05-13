@@ -7,7 +7,6 @@
 #include <time.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <poll.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -26,6 +25,7 @@ static int flagdbg = 0;
 static int rqrun = 0;
 static int flagsvr = 0;
 static char * binf = 0;
+static char * diskf = 0;
 static int listenportnumber = 58704;
 
 static int fdlisten = -1;
@@ -64,37 +64,6 @@ static const char * const gsc_usage =
 "      File is assmued to contain 16 bit words, 2 octets each in big-endian\n"
 "      Use the -e option to load little-endian files.\n";
 
-int loadtxtfile(FILE* infl, char** txtptr, int * newsize)
-{
-	char * txt;
-	void * tmpp;
-	int msz;
-	int tsz;
-	int i;
-	tsz = 0;
-	msz = 1000;
-	txt = (char*)malloc(msz);
-
-	while(!feof(infl)) {
-		i = getc(infl);
-		if(i != -1) {
-			if(tsz >= msz) {
-				msz += 1000;
-				tmpp = realloc(txt, msz);
-				if(!tmpp) {
-					fprintf(stderr, "!!! Out of memory !!!\n");
-				       	return -5;
-				}
-				txt = (char*)tmpp;
-			}
-			txt[tsz++] = (char)i;
-		}
-	}
-	*txtptr = txt;
-	*newsize = tsz;
-	return msz;
-}
-
 int makewaitserver()
 {
 	int fdsvr, i;
@@ -123,45 +92,6 @@ int makewaitserver()
 	}
 	fprintf(stderr, "Listening on port %d ...\n", listenportnumber);
 	fdlisten = fdsvr;
-	return 0;
-}
-
-int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize)
-{
-	int fd, i;
-	struct stat fdi;
-	size_t f, o;
-	uint16_t eswp;
-	uint8_t *mem;
-	fd = open(path, O_RDONLY);
-	if(fd < 0) { perror("open"); return -5; }
-	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
-	f = fdi.st_size & (~1);
-	if(f > 0x20000) f = 0x20000;
-	mem = (uint8_t*)malloc(f);
-	if(!mem) { close(fd); return -5; }
-	o = 0;
-	while((i = read(fd, mem+o, f - o) > 0) && o < f) {
-		o += i;
-	}
-	if( i < 0 ) {
-		perror("read");
-		close(fd);
-		return -1;
-	}
-	close(fd);
-
-	o = 0;
-	if(endian) {
-		while(o < f) {
-			eswp = *(uint16_t*)(mem+o);
-			*(uint16_t*)(mem+o) = (eswp >> 8) | (eswp << 8);
-			o += 2;
-		}
-	}
-	*nmem = mem;
-	fprintf(stderr, "loaded %lu bytes\n", f);
-	if(nsize) *nsize = f;
 	return 0;
 }
 
@@ -300,6 +230,11 @@ void fetchtime(struct timespec * t)
 int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 {
 	if(!item || !dev) return -1;
+	if(item->QueryAttach) {
+		if(item->QueryAttach(item, dev)) {
+			return -1;
+		}
+	}
 	if(item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV) {
 	} else {
 		item->dndev = dev;
@@ -374,6 +309,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 	case ISIT_NONE: return -1;
 	case ISIT_SESSION: objsize = sizeof(struct isiSession); break;
 	case ISIT_NETSYNC: objsize = sizeof(struct isiNetSync); break;
+	case ISIT_DISK: objsize = sizeof(struct isiDisk); break;
 	case ISIT_MEM6416: objsize = sizeof(struct memory64x16); break;
 	case ISIT_CPU: objsize = sizeof(struct isiCPUInfo); break;
 	case ISIT_BUSDEV: objsize = sizeof(struct isiBusInfo); break;
@@ -406,6 +342,19 @@ int isi_delete_object(struct objtype *obj)
 {
 	if(!obj) return -1;
 	struct isiObjTable *t = &allobj;
+	if(obj->objtype >= 0x2fff) {
+		struct isiInfo *info = (struct isiInfo *)obj;
+		if(info->Delete) {
+			info->Delete(info);
+		}
+		if(info->rvstate) {
+			free(info->rvstate);
+		}
+		if(info->svstate) {
+			free(info->svstate);
+		}
+		memset(info, 0, sizeof(struct isiInfo));
+	}
 	free(obj);
 	uint32_t i;
 	for(i = 0; i < t->count; i++) {
@@ -492,6 +441,7 @@ int isi_delete_ses(struct isiSession *s)
 		t->table[i] = t->table[i+1];
 		i++;
 	}
+	close(s->sfd);
 	free(s->in);
 	free(s->out);
 	isi_delete_object(&s->id);
@@ -563,6 +513,13 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	isi_createdev(&ninfo);
 	HWM_CreateDevice(ninfo, "mack_35fd");
 	isi_attach(bus, ninfo);
+	if(diskf) {
+		uint64_t dsk = 0;
+		struct isiInfo *ndsk;
+		isi_text_dec(diskf, strlen(diskf), 11, &dsk, 8);
+		isi_create_disk(dsk, &ndsk);
+		isi_attach(ninfo, ndsk);
+	}
 
 	return 0;
 }
@@ -800,6 +757,12 @@ static int parse_args(int argc, char**argv)
 					break;
 				case 'l':
 					isi_scan_dir();
+					break;
+				case 'd':
+					k = -1;
+					if(i+1<argc) {
+						diskf = strdup(argv[++i]);
+					}
 					break;
 				case 'p':
 					k = -1;
@@ -1065,10 +1028,13 @@ sessionerror:
 	}
 	if(flagsvr) {
 		fprintf(stderr, "closing connections\n");
-		for(k = 0; k < allses.count; k++) {
-			shutdown(allses.table[k]->sfd, SHUT_RDWR);
-			close(allses.table[k]->sfd);
+		while(allses.count) {
+			shutdown(allses.table[0]->sfd, SHUT_RDWR);
+			isi_delete_ses(allses.table[0]);
 		}
+	}
+	while(allobj.count) {
+		isi_delete_object(allobj.table[0]);
 	}
 	if(rqrun) printf("\n\n\n\n");
 	return 0;

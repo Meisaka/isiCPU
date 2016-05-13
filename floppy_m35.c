@@ -11,7 +11,6 @@
 
 /* state while this device exists/active (runtime volatile) */
 struct Disk_M35FD_rvstate {
-	uint32_t floppy;
 	uint16_t track;
 	uint16_t sector;
 	uint16_t seektrack;
@@ -24,12 +23,19 @@ struct Disk_M35FD_rvstate {
 
 /* state while running on this server (server volatile) */
 struct Disk_M35FD_svstate {
+	uint16_t svbuf[512];
 };
 
 int Disk_M35FD_SIZE(int t, const char *cfg)
 {
 	if(t == 0) return sizeof(struct Disk_M35FD_rvstate);
 	if(t == 1) return sizeof(struct Disk_M35FD_svstate);
+	return 0;
+}
+
+static int Disk_M35FD_QAttach(struct isiInfo *info, struct isiInfo *dev)
+{
+	if(!dev || dev->id.objtype != ISIT_DISK) return -1;
 	return 0;
 }
 
@@ -59,14 +65,18 @@ static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
 static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
 	uint16_t lerr;
+	uint16_t mc;
+	int i;
+	int r = 0;
 	switch(msg[0]) {
 	case 0:
-		if(dev->floppy) {
+		if(info->dndev) {
 			if(dev->oper) {
 				msg[1] = 3;
 			} else {
-				msg[1] = 2; // TODO floppy
+				msg[1] = 1; // TODO RW vs RO floppy
 			}
 		} else {
 			msg[1] = 0;
@@ -82,7 +92,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		msg[1] = 0;
 		lerr = dev->errcode;
 		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
-		else if(!dev->floppy) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(!info->dndev) dev->errcode = ERR_M35_NO_MEDIA;
 		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
 		else {
 			dev->seeksector = msg[3];
@@ -98,29 +108,35 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		msg[1] = 0;
 		lerr = dev->errcode;
 		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
-		else if(!dev->floppy) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(!info->dndev) dev->errcode = ERR_M35_NO_MEDIA;
 		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
 		else if(0) dev->errcode = ERR_M35_PROTECT; /* TODO write_protect */
 		else {
 			dev->seeksector = msg[3];
 			dev->seektrack = dev->seeksector / 18;
-			dev->rwaddr = msg[4];
-			dev->oper = 1;
+			mc = dev->rwaddr = msg[4];
+			for(i = 0; i < 512; i++) {
+				dss->svbuf[i] = isi_hw_rdmem(info->mem, mc);
+				mc++;
+			}
+			dev->oper = 2;
+			r = 512;
 			msg[1] = 1;
 			Disk_M35FD_statechange(info, &crun);
 		}
 		if(lerr != dev->errcode) Disk_M35FD_statechange(info, &crun);
 		break;
 	}
-	return 0;
+	return r;
 }
 
 static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
 	while(isi_time_lt(&info->nrun, &crun)) {
 		if(dev->oper) {
-			if(!dev->floppy) {
+			if(!info->dndev || !info->dndev->MsgIn) {
 				dev->errcode = ERR_M35_EJECT;
 				dev->oper = 0;
 				Disk_M35FD_statechange(info, &info->nrun);
@@ -137,6 +153,25 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 				isi_addtime(&info->nrun, 32573);
 				if((dev->seeksector + 1) % 18 == dev->sector) {
 					/* read success */
+					struct isiDiskSeekMsg dseek;
+					uint16_t *dr;
+					isi_disk_getblock(info->dndev, (void**)&dr);
+					dr += (512 * (dev->seeksector & 3));
+					dseek.mcode = 0x0020;
+					dseek.block = dev->seeksector >> 2;
+					info->dndev->MsgIn(info->dndev, info, (uint16_t*)&dseek, crun);
+					if(dev->oper == 1) {
+						uint16_t mc;
+						mc = dev->rwaddr;
+						for(int i = 0; i < 512; i++) {
+							isi_hw_wrmem(info->mem, mc, dr[i]);
+							mc++;
+						}
+					} else if(dev->oper == 2) {
+						for(int i = 0; i < 512; i++) {
+							dr[i] = dss->svbuf[i];
+						}
+					}
 					dev->oper = 0;
 					Disk_M35FD_statechange(info, &info->nrun);
 				}
@@ -171,6 +206,7 @@ int Disk_M35FD_Init(struct isiInfo *info, const char *cfg)
 	info->Reset = Disk_M35FD_Reset; /* power on reset */
 	info->MsgIn = Disk_M35FD_MsgIn; /* message from CPU or network */
 	info->RunCycles = Disk_M35FD_Tick; /* scheduled runtime */
+	info->QueryAttach = Disk_M35FD_QAttach;
 	return 0;
 }
 

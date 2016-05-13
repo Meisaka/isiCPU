@@ -82,21 +82,6 @@ static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 	}
 }
 
-uint16_t DCPU_rram(isiram16 ram, uint16_t a)
-{
-	return ram->ram[a];
-}
-void DCPU_wram(isiram16 ram, uint16_t a, uint16_t v)
-{
-	if(!(ram->ctl[a] & ISI_RAMCTL_RDONLY)) ram->ram[a] = v;
-	if(ram->ram[a] ^ ((uint16_t)ram->ctl[a])) {
-		//ram->ctl[a] |= ISI_RAMCTL_DELTA;
-		if(ram->ctl[a] & ISI_RAMCTL_SYNC) ram->info |= ISI_RAMINFO_SCAN;
-	} else {
-		//ram->ctl[a] &= ~ISI_RAMCTL_DELTA;
-	}
-}
-
 // Write referenced B operand
 static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, isiram16 ram)
 {
@@ -116,7 +101,7 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: isi_cpu_wrmem(ram, pr->R[p & 0x7], v); return;
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -124,14 +109,14 @@ static inline void DCPU_reref(int p, uint16_t v, DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x18: DCPU_wram(ram, --(pr->SP), v); return;
-	case 0x19: DCPU_wram(ram, pr->SP, v); return;
-	case 0x1a: pr->cycl++; DCPU_wram(ram, pr->SP + DCPU_rram(ram,pr->PC++), v); return;
+	case 0x17: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: isi_cpu_wrmem(ram, --(pr->SP), v); return;
+	case 0x19: isi_cpu_wrmem(ram, pr->SP, v); return;
+	case 0x1a: pr->cycl++; isi_cpu_wrmem(ram, pr->SP + isi_cpu_rdmem(ram,pr->PC++), v); return;
 	case 0x1b: pr->SP = v; return;
 	case 0x1c: pr->PC = v; return;
 	case 0x1d: pr->EX = v; return;
-	case 0x1e: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram,pr->PC++), v); return;
+	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram,pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
 		fprintf(stderr, "DCPU: Bad write: %x\n", p);
@@ -159,7 +144,7 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: DCPU_wram(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: isi_cpu_wrmem(ram, pr->R[p & 0x7], v); return;
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -167,14 +152,14 @@ static inline void DCPU_rerefB(int p, uint16_t v, DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x18: DCPU_wram(ram, pr->SP, v); return;
-	case 0x19: DCPU_wram(ram, pr->SP, v); return;
-	case 0x1a: pr->cycl++; DCPU_wram(ram, pr->SP + DCPU_rram(ram, pr->PC++), v); return;
+	case 0x17: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: isi_cpu_wrmem(ram, pr->SP, v); return;
+	case 0x19: isi_cpu_wrmem(ram, pr->SP, v); return;
+	case 0x1a: pr->cycl++; isi_cpu_wrmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC++), v); return;
 	case 0x1b: pr->SP = v; return;
 	case 0x1c: pr->PC = v; return;
 	case 0x1d: pr->EX = v; return;
-	case 0x1e: pr->cycl++; DCPU_wram(ram, DCPU_rram(ram, pr->PC++), v); return;
+	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
 		fprintf(stderr, "DCPU: Bad write: %x\n", p);
@@ -203,7 +188,7 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0f: return isi_cpu_rdmem(ram, pr->R[p & 0x7]);
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -211,15 +196,15 @@ static inline uint16_t DCPU_deref(int p, DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x18: return DCPU_rram(ram, pr->SP++);
-	case 0x19: return DCPU_rram(ram, pr->SP);
-	case 0x1a: pr->cycl++; return DCPU_rram(ram, pr->SP + DCPU_rram(ram, pr->PC++));
+	case 0x17: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7]);
+	case 0x18: return isi_cpu_rdmem(ram, pr->SP++);
+	case 0x19: return isi_cpu_rdmem(ram, pr->SP);
+	case 0x1a: pr->cycl++; return isi_cpu_rdmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC++));
 	case 0x1b: return pr->SP;
 	case 0x1c: return pr->PC;
 	case 0x1d: return pr->EX;
-	case 0x1e: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC++));
-	case 0x1f: pr->cycl++; return DCPU_rram(ram, pr->PC++);
+	case 0x1e: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC++));
+	case 0x1f: pr->cycl++; return isi_cpu_rdmem(ram, pr->PC++);
 	default:
 		return (uint16_t)(p - 0x21); /* literals */
 	}
@@ -244,7 +229,7 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: return DCPU_rram(ram, pr->R[p & 0x7]);
+	case 0x0f: return isi_cpu_rdmem(ram, pr->R[p & 0x7]);
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -252,15 +237,15 @@ static inline uint16_t DCPU_derefB(int p, DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x18: return DCPU_rram(ram, --(pr->SP));
-	case 0x19: return DCPU_rram(ram, pr->SP);
-	case 0x1a: pr->cycl++; return DCPU_rram(ram, pr->SP + DCPU_rram(ram, pr->PC));
+	case 0x17: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC) + pr->R[p & 0x7]);
+	case 0x18: return isi_cpu_rdmem(ram, --(pr->SP));
+	case 0x19: return isi_cpu_rdmem(ram, pr->SP);
+	case 0x1a: pr->cycl++; return isi_cpu_rdmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC));
 	case 0x1b: return pr->SP;
 	case 0x1c: return pr->PC;
 	case 0x1d: return pr->EX;
-	case 0x1e: pr->cycl++; return DCPU_rram(ram, DCPU_rram(ram, pr->PC));
-	case 0x1f: pr->cycl++; return DCPU_rram(ram, pr->PC);
+	case 0x1e: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC));
+	case 0x1f: pr->cycl++; return isi_cpu_rdmem(ram, pr->PC);
 	default:
 		return (uint16_t)(p - 0x21); /* literals */
 	}
@@ -349,7 +334,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->MODE ^= DCPUMODE_EXTINT;
 	} else {
-		op = DCPU_rram(ram, pr->PC++);
+		op = isi_cpu_rdmem(ram, pr->PC++);
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
 		op &= 0x001f;
