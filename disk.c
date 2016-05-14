@@ -249,7 +249,7 @@ int isi_read_disk_file(struct isiDisk *disk)
 	if(!ds) return -1;
 	memset(ds->block, 0, sizeof(ds->block));
 	lseek(disk->fd, sizeof(ds->block) * disk->block, SEEK_SET);
-	if((i = read(disk->fd, ds->block, 4096) > 0)) {
+	if(((i = read(disk->fd, ds->block, 4096)) > 0)) {
 		f += i;
 	}
 	if( i < 0 ) {
@@ -267,7 +267,7 @@ int isi_write_disk_file(struct isiDisk *disk)
 	struct isiInfo *idisk = (struct isiInfo *)disk;
 	struct disk_svstate *ds = (struct disk_svstate*)idisk->svstate;
 	lseek(disk->fd, sizeof(ds->block) * disk->block, SEEK_SET);
-	if((i = write(disk->fd, ds->block, 4096) > 0)) {
+	if(((i = write(disk->fd, ds->block, 4096)) > 0)) {
 		f += i;
 	}
 	if( i < 0 ) {
@@ -288,11 +288,10 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 	if(fd < 0) { perror("open"); return -5; }
 	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
 	f = fdi.st_size & (~1);
-	if(f > 0x20000) f = 0x20000;
 	mem = (uint8_t*)malloc(f);
 	if(!mem) { close(fd); return -5; }
 	o = 0;
-	while((i = read(fd, mem+o, f - o) > 0) && o < f) {
+	while(((i = read(fd, mem+o, f - o)) > 0) && o < f) {
 		o += i;
 	}
 	if( i < 0 ) {
@@ -338,7 +337,7 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 		mem = nmem;
 	}
 	o = 0;
-	while((i = write(fd, nmem+o, nsize-o) > 0) && o < nsize) {
+	while(o < nsize && ((i = write(fd, nmem+o, nsize-o)) > 0)) {
 		o += i;
 	}
 	if(endian) free(mem);

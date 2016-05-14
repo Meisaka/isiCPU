@@ -25,6 +25,7 @@ static int flagdbg = 0;
 static int rqrun = 0;
 static int flagsvr = 0;
 static char * binf = 0;
+static char * endf = 0;
 static char * diskf = 0;
 static int listenportnumber = 58704;
 
@@ -51,7 +52,7 @@ void isi_run_sync(struct timespec crun);
 int isi_scan_dir();
 
 static const char * const gsc_usage =
-"Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n\n"
+"Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n%s -E <file>\n"
 "Options:\n"
 " -e  Assume <binfile> is little-endian\n"
 " -s  Enable server and wait for connection before\n"
@@ -62,7 +63,8 @@ static const char * const gsc_usage =
 " -D  Enable debugging and single stepping DCPU\n"
 " -B <binfile>  Load <binfile> into DCPU memory starting at 0x0000.\n"
 "      File is assmued to contain 16 bit words, 2 octets each in big-endian\n"
-"      Use the -e option to load little-endian files.\n";
+"      Use the -e option to load little-endian files.\n"
+" -E <file>  Flip the bytes in each 16 bit word of <file> then exit.\n";
 
 int makewaitserver()
 {
@@ -498,6 +500,7 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	uint32_t rsize = 0;
 	if(binf) {
 		loadbinfile(binf, loadendian, &rom, &rsize);
+		if(rsize > 0x20000) rsize = 0x20000;
 		char *ist;
 		asprintf(&ist, "rom:size=%u", rsize);
 		isi_createdev(&ninfo);
@@ -778,6 +781,12 @@ static int parse_args(int argc, char**argv)
 				case 'e':
 					loadendian = 2;
 					break;
+				case 'E':
+					k = -1;
+					if(i+1<argc) {
+						endf = strdup(argv[++i]);
+					}
+					break;
 				case 's':
 					flagsvr = 1;
 					break;
@@ -824,7 +833,15 @@ int main(int argc, char**argv, char**envp)
 		i = parse_args(argc, argv);
 		if(i) return i;
 	} else {
-		fprintf(stderr, gsc_usage, argv[0]);
+		fprintf(stderr, gsc_usage, argv[0], argv[0]);
+		return 0;
+	}
+
+	if(endf) {
+		unsigned char * mflip;
+		uint32_t rsize;
+		loadbinfile(endf, 1, &mflip, &rsize);
+		savebinfile(endf, 0, mflip, rsize);
 		return 0;
 	}
 
