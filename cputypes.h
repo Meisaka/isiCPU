@@ -66,10 +66,30 @@ struct isiNetSync {
 	uint32_t len[4];
 };
 
+typedef int (*isi_init)(struct isiInfo *, const uint8_t *, size_t);
+typedef int (*isi_size)(int, const uint8_t *, size_t, size_t *);
 typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
 typedef int (*isi_control_call)(struct isiInfo *);
 typedef int (*isi_attach_call)(struct isiInfo *to, struct isiInfo *dev);
 typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, struct timespec mtime);
+
+struct isiConstruct {
+	uint32_t objtype;
+	const char * name;
+	const char * desc;
+	isi_init PreInit;
+	isi_init Init;
+	isi_size QuerySize;
+	struct isiReflection *rvproto;
+	struct isiReflection *svproto;
+	void * meta;
+};
+
+struct isiConTable {
+	struct isiConstruct ** table;
+	uint32_t count;
+	uint32_t limit;
+};
 
 struct isiInfo {
 	struct objtype id;
@@ -89,6 +109,7 @@ struct isiInfo {
 	struct isiReflection *svproto;
 	void * mem;
 	struct isiInfo * hostcpu;
+	const struct isiConstruct * meta;
 	struct timespec nrun;
 };
 
@@ -156,10 +177,14 @@ int isi_create_object(int objtype, struct objtype **out);
 int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk);
 int isi_createdev(struct isiInfo **ndev);
 int isi_pushdev(struct isiDevTable *t, struct isiInfo *d);
+uint32_t isi_lookup_name(const char *);
+int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit);
+int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int limit);
 
 void isi_addtime(struct timespec *, size_t nsec);
 int isi_time_lt(struct timespec *, struct timespec *);
 
+int isi_register(struct isiConstruct *obj);
 int isi_inittable(struct isiDevTable *t);
 
 int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize);
@@ -183,6 +208,14 @@ int isi_set_devmemsync_extent(struct objtype *target, struct objtype *memtarget,
 int isi_resync_dev(struct objtype *target);
 int isi_resync_all();
 int isi_remove_sync(struct objtype *target);
+
+#define ISIERR_SUCCESS 0
+#define ISIERR_FAIL -1
+#define ISIERR_NOTFOUND 1
+#define ISIERR_INVALIDPARAM -2
+#define ISIERR_MISSPREREQ -3
+#define ISIERR_NOCOMPAT -4
+#define ISIERR_NOMEM -5
 
 #define ISIN_SYNC_NONE 0
 #define ISIN_SYNC_DEVR 1

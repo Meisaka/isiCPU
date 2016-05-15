@@ -17,7 +17,7 @@ int isi_text_enc(char *text, int limit, void const *vv, int len)
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
 		"ghijklmnopqrstuvwxyz0123456789-_";
 	unsigned char const *tid = (unsigned char const *)vv;
-	uint32_t ce;
+	uint32_t ce = 0;
 	int i, s;
 	s = 0;
 	for(i = 0; i < limit; i++) {
@@ -218,7 +218,7 @@ int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk)
 	if(!strcmp(dskname, ldisk)) {
 	}
 	fprintf(stderr, "Openning Disk\n");
-	fd = open(ldisk, O_RDWR | oflags);
+	fd = open(ldisk, O_RDWR | oflags, 0644);
 	if(fd == -1) {
 		perror("open");
 		free(ldisk);

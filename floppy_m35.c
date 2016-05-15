@@ -20,17 +20,36 @@ struct Disk_M35FD_rvstate {
 	uint16_t oper;
 	uint16_t errcode;
 };
+ISIREFLECT(struct Disk_M35FD_rvstate,
+	ISIR(Disk_M35FD_rvstate, uint16_t, track)
+	ISIR(Disk_M35FD_rvstate, uint16_t, sector)
+	ISIR(Disk_M35FD_rvstate, uint16_t, seektrack)
+	ISIR(Disk_M35FD_rvstate, uint16_t, seeksector)
+	ISIR(Disk_M35FD_rvstate, uint16_t, rwaddr)
+	ISIR(Disk_M35FD_rvstate, uint16_t, iword)
+	ISIR(Disk_M35FD_rvstate, uint16_t, oper)
+	ISIR(Disk_M35FD_rvstate, uint16_t, errcode)
+)
 
 /* state while running on this server (server volatile) */
 struct Disk_M35FD_svstate {
 	uint16_t svbuf[512];
 };
+ISIREFLECT(struct Disk_M35FD_svstate,
+	ISIR(Disk_M35FD_svstate, uint16_t, svbuf)
+)
 
-int Disk_M35FD_SIZE(int t, const char *cfg)
+int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
+struct isiConstruct Disk_M35FD_Con = {
+	0x5000, "mack_35fd", "Mackapar M35FD",
+	NULL, Disk_M35FD_Init, NULL,
+	&ISIREFNAME(struct Disk_M35FD_rvstate), &ISIREFNAME(struct Disk_M35FD_svstate),
+	&Disk_M35FD_Meta
+};
+void Disk_M35FD_Register()
 {
-	if(t == 0) return sizeof(struct Disk_M35FD_rvstate);
-	if(t == 1) return sizeof(struct Disk_M35FD_svstate);
-	return 0;
+	isi_register(&Disk_M35FD_Con);
 }
 
 static int Disk_M35FD_QAttach(struct isiInfo *info, struct isiInfo *dev)
@@ -201,7 +220,7 @@ static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t 
 	return 1;
 }
 
-int Disk_M35FD_Init(struct isiInfo *info, const char *cfg)
+int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	info->Reset = Disk_M35FD_Reset; /* power on reset */
 	info->MsgIn = Disk_M35FD_MsgIn; /* message from CPU or network */

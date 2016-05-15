@@ -7,12 +7,24 @@ struct LKBD {
 	unsigned char keydown[8];
 };
 
-int Keyboard_SIZE(int t, const char *cfg)
+ISIREFLECT(struct LKBD,
+	ISIR(LKBD, uint16_t, imsg)
+	ISIR(LKBD, int, keykount)
+	ISIR(LKBD, uint8_t, keybf)
+	ISIR(LKBD, uint8_t, keydown)
+)
+
+int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+struct isidcpudev Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
+struct isiConstruct Keyboard_Con = {
+	0x5000, "keyboard", "Generic Keyboard",
+	NULL, Keyboard_Init, NULL,
+	&ISIREFNAME(struct LKBD), NULL,
+	&Keyboard_Meta
+};
+void Keyboard_Register()
 {
-	switch(t) {
-	case 0: return sizeof(struct LKBD);
-	default: return 0;
-	}
+	isi_register(&Keyboard_Con);
 }
 
 static void Keyboard_KDown(struct LKBD *kb, int kc)
@@ -116,7 +128,7 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	return 0;
 }
 
-int Keyboard_Init(struct isiInfo *info, const char *cfg)
+int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	info->MsgIn = Keyboard_MsgIn;
 	return 0;

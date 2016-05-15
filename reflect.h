@@ -1,5 +1,6 @@
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #define ISIR_void(o,n,l,tl)  fprintf(stderr, "%%+%02x VOID-" #n "\n", o);
 #define ISIR_char(o,n,l,tl)  fprintf(stderr, "%%+%02x CHAR[%d]-" #n "\n", o, l / tl);
@@ -25,7 +26,7 @@ struct isiReflEntry {
 	const char * const ident;
 };
 struct isiReflection {
-	const uint32_t length;
+	const size_t length;
 	struct isiReflEntry const * const ent;
 };
 

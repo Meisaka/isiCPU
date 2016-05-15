@@ -4,19 +4,34 @@
 struct EEROM_rvstate {
 	uint16_t sz;
 };
+ISIREFLECT(struct EEROM_rvstate,
+	ISIR(EEROM_rvstate, uint16_t, sz)
+)
 
-int EEROM_SIZE(int t, const char *cfg)
+int EEROM_SIZE(int t, const uint8_t *cfg, size_t lcfg, size_t *sz)
 {
-	const char * cp = strchr(cfg, ':');
-	unsigned int rqs = 0;
+	uint32_t rqs = 0;
 	rqs = 0;
-	if(cp) {
-		sscanf(cp, ":size=%u", &rqs);
+	if(isi_fetch_parameter(cfg, lcfg, 1, &rqs, sizeof(uint32_t))) {
+		rqs = 2048; /* pick a default if we don't get the option */
 	}
 	switch(t) {
-	case 0: return sizeof(struct EEROM_rvstate) + rqs;
+	case 0: return *sz = sizeof(struct EEROM_rvstate) + rqs, 0;
 	default: return 0;
 	}
+}
+
+int EEROM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+struct isidcpudev EEROM_Meta = {0x0000,0x17400011,MF_ECIV};
+struct isiConstruct EEROM_Con = {
+	0x5000, "rom", "Embedded ROM",
+	0, EEROM_Init, EEROM_SIZE,
+	&ISIREFNAME(struct EEROM_rvstate), NULL,
+	&EEROM_Meta
+};
+void EEROM_Register()
+{
+	isi_register(&EEROM_Con);
 }
 
 static int EEROM_Reset(struct isiInfo *info, struct isiInfo *host, struct timespec mtime)
@@ -64,7 +79,7 @@ static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 1;
 }
 
-int EEROM_Init(struct isiInfo *info, const char * cfg)
+int EEROM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
 	info->MsgIn = EEROM_MsgIn;
 	return 0;

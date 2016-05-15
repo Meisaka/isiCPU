@@ -43,33 +43,38 @@ static unsigned short nya_defpal[] = {
 0x0f55,0x0f5f,0x0ff5,0x0fff
 };
 
-struct NyaLEM_rv {
+struct Nya_LEM_rv {
 	unsigned short dspmem;
 	unsigned short fontmem;
 	unsigned short palmem;
 	unsigned short border;
 	unsigned short version;
 };
-ISIREFLECT(struct NyaLEM_rv,
-	ISIR(NyaLEM_rv, unsigned short, dspmem)
-	ISIR(NyaLEM_rv, unsigned short, fontmem)
-	ISIR(NyaLEM_rv, unsigned short, palmem)
-	ISIR(NyaLEM_rv, unsigned short, border)
-	ISIR(NyaLEM_rv, unsigned short, version)
+ISIREFLECT(struct Nya_LEM_rv,
+	ISIR(Nya_LEM_rv, unsigned short, dspmem)
+	ISIR(Nya_LEM_rv, unsigned short, fontmem)
+	ISIR(Nya_LEM_rv, unsigned short, palmem)
+	ISIR(Nya_LEM_rv, unsigned short, border)
+	ISIR(Nya_LEM_rv, unsigned short, version)
 )
 
-int Nya_LEM_SIZE(int t, const char * cfg)
+int Nya_LEM_Init(struct isiInfo *info, const uint8_t *cfg, size_t);
+struct isidcpudev Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
+struct isiConstruct Nya_LEM_Con = {
+	0x5000, "nya_lem", "Nya LEM 1802",
+	NULL, Nya_LEM_Init, NULL,
+	&ISIREFNAME(struct Nya_LEM_rv), NULL,
+	&Nya_LEM_Meta
+};
+void Nya_LEM_Register()
 {
-	switch(t) {
-	case 0: return sizeof(struct NyaLEM_rv);
-	default: return 0;
-	}
+	isi_register(&Nya_LEM_Con);
 }
 
 static int Nya_LEM_Reset(struct isiInfo *info)
 {
-	struct NyaLEM_rv* dsp;
-	dsp = (struct NyaLEM_rv*)info->rvstate;
+	struct Nya_LEM_rv* dsp;
+	dsp = (struct Nya_LEM_rv*)info->rvstate;
 	if(!dsp) return -1;
 	dsp->dspmem = 0;
 	dsp->fontmem = 0;
@@ -79,12 +84,12 @@ static int Nya_LEM_Reset(struct isiInfo *info)
 
 static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec crun)
 {
-	struct NyaLEM_rv* dsp;
+	struct Nya_LEM_rv* dsp;
 	struct memory64x16 *mem;
 	unsigned short dma;
 	int i;
 	if(!info) return -1;
-	dsp = (struct NyaLEM_rv*)info->rvstate;
+	dsp = (struct Nya_LEM_rv*)info->rvstate;
 	mem = (struct memory64x16*)info->mem;
 	switch(msg[0]) {
 	case 0:
@@ -133,11 +138,10 @@ int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, str
 	return 0;
 }
 
-int Nya_LEM_Init(struct isiInfo *info, const char * cfg)
+int Nya_LEM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
 	info->MsgIn = Nya_LEM_MsgIn;
 	info->Reset = Nya_LEM_Reset;
-	info->rvproto = &ISIREFNAME(struct NyaLEM_rv);
 	return 0;
 }
 

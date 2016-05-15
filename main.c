@@ -44,11 +44,14 @@ static uint32_t softcpumin = 1;
 static struct isiDevTable alldev;
 static struct isiDevTable allcpu;
 
+struct isiConTable allcon;
+
 uint32_t maxsid = 0;
 struct isiObjTable allobj;
 struct isiSessionTable allses;
 
 void isi_run_sync(struct timespec crun);
+void isi_register_objects();
 int isi_scan_dir();
 
 static const char * const gsc_usage =
@@ -231,10 +234,25 @@ void fetchtime(struct timespec * t)
 
 int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 {
+	int e = 0;
 	if(!item || !dev) return -1;
+	if(item->id.objtype < 0x2f00) return -1;
+	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
+		if(dev->id.objtype > 0x2000 && dev->id.objtype < 0x2f00) {
+			if(item->QueryAttach) {
+				if((e = item->QueryAttach(item, dev))) {
+					return e;
+				}
+			}
+			item->mem = dev;
+			if(item->Attach) e = item->Attach(item, dev);
+			return e;
+		}
+	}
+	if(dev->id.objtype < 0x2f00) return -1;
 	if(item->QueryAttach) {
-		if(item->QueryAttach(item, dev)) {
-			return -1;
+		if((e = item->QueryAttach(item, dev))) {
+			return e;
 		}
 	}
 	if(item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV) {
@@ -264,6 +282,94 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 		}
 	}
 	return 0;
+}
+
+int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit)
+{
+	if(!p || plen < 1 || !code || !limit) return -1;
+	int found = 0;
+	int flen = 0;
+	uint8_t *uo = (uint8_t*)in;
+	for(int i = plen; i--; p++) {
+		switch(found) {
+		case 0:
+			if(*p == 0) {
+				found = 1;
+				*p = code;
+			}
+			else found = 2;
+			break;
+		case 1:
+			*p = (uint8_t)limit;
+		case 2:
+			flen = *p;
+			if(flen) found += 2;
+			else found = 0;
+			break;
+		case 3:
+			if(limit && flen) {
+				*p = *uo;
+				uo++;
+				limit--;
+				flen--;
+				if(!limit && !i) return 0;
+			} else {
+				*p = 0;
+				return 0;
+			}
+			break;
+		case 4:
+			flen--;
+			if(!flen) found = 0;
+			break;
+		default:
+			found = 0;
+			break;
+		}
+	}
+	return 1;
+}
+
+int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int limit)
+{
+	if(!p || plen < 1 || !code) return -1;
+	int found = 0;
+	int flen = 0;
+	uint8_t *uo = (uint8_t*)out;
+	for(int i = plen; i--; p++) {
+		switch(found) {
+		case 0:
+			if((*p) == code) found = 1;
+			else found = 2;
+			if(!*p) return 1;
+			break;
+		case 1:
+		case 2:
+			flen = *p;
+			if(flen) found += 2;
+			else found = 0;
+			break;
+		case 3:
+			if(limit && flen) {
+				*uo = *p;
+				uo++;
+				limit--;
+				flen--;
+				if(!limit) return 0;
+			} else {
+				return 0;
+			}
+			break;
+		case 4:
+			flen--;
+			if(!flen) found = 0;
+			break;
+		default:
+			found = 0;
+			break;
+		}
+	}
+	return 1;
 }
 
 void isi_objtable_init()
@@ -308,7 +414,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 	size_t objsize = 0;
 	if( (objtype >> 12) > 2 ) objtype &= ~0xfff;
 	switch(objtype) {
-	case ISIT_NONE: return -1;
+	case ISIT_NONE: return ISIERR_NOTFOUND;
 	case ISIT_SESSION: objsize = sizeof(struct isiSession); break;
 	case ISIT_NETSYNC: objsize = sizeof(struct isiNetSync); break;
 	case ISIT_DISK: objsize = sizeof(struct isiDisk); break;
@@ -321,7 +427,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 		*sz = objsize;
 		return 0;
 	}
-	return -1;
+	return ISIERR_NOTFOUND;
 }
 
 int isi_create_object(int objtype, struct objtype **out)
@@ -329,9 +435,9 @@ int isi_create_object(int objtype, struct objtype **out)
 	if(!out) return -1;
 	struct objtype *ns;
 	size_t objsize = 0;
-	if(isi_get_type_size(objtype, &objsize)) return -2;
+	if(isi_get_type_size(objtype, &objsize)) return ISIERR_INVALIDPARAM;
 	ns = (struct objtype*)malloc(objsize);
-	if(!ns) return -5;
+	if(!ns) return ISIERR_NOMEM;
 	memset(ns, 0, objsize);
 	ns->id = ++maxsid; // TODO make "better" ID numbers?
 	ns->objtype = objtype;
@@ -340,9 +446,62 @@ int isi_create_object(int objtype, struct objtype **out)
 	return 0;
 }
 
+int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg)
+{
+	uint32_t x;
+	int i;
+	struct isiConstruct *con = NULL;
+	if(!objtype || !out) return ISIERR_INVALIDPARAM;
+	for(x = 0; x < allcon.count; x++) {
+		if(allcon.table[x]->objtype == objtype) {
+			con = allcon.table[x];
+			break;
+		}
+	}
+	if(!con) return ISIERR_NOTFOUND;
+	struct objtype *ndev;
+	i = isi_create_object(objtype, &ndev);
+	if(i) return i;
+	struct isiInfo *info = (struct isiInfo*)ndev;
+	if(objtype < 0x2f00) {
+		*out = ndev;
+		return 0;
+	}
+	info->meta = con;
+	info->rvproto = con->rvproto;
+	info->svproto = con->svproto;
+	if(con->PreInit) con->PreInit(info, cfg, lcfg);
+	if(objtype > 0x2f00 && con->QuerySize) {
+		size_t sz = 0;
+		con->QuerySize(0, cfg, lcfg, &sz);
+		if(sz) {
+			info->rvstate = malloc(sz);
+			memset(info->rvstate, 0, sz);
+		}
+		sz = 0;
+		con->QuerySize(1, cfg, lcfg, &sz);
+		if(sz) {
+			info->svstate = malloc(sz);
+			memset(info->svstate, 0, sz);
+		}
+	} else {
+		if(con->rvproto && con->rvproto->length) {
+			info->rvstate = malloc(con->rvproto->length);
+			memset(info->rvstate, 0, con->rvproto->length);
+		}
+		if(con->svproto && con->svproto->length) {
+			info->svstate = malloc(con->svproto->length);
+			memset(info->svstate, 0, con->svproto->length);
+		}
+	}
+	if(con->Init) con->Init(info, cfg, lcfg);
+	*out = ndev;
+	return 0;
+}
+
 int isi_delete_object(struct objtype *obj)
 {
-	if(!obj) return -1;
+	if(!obj) return ISIERR_INVALIDPARAM;
 	struct isiObjTable *t = &allobj;
 	if(obj->objtype >= 0x2fff) {
 		struct isiInfo *info = (struct isiInfo *)obj;
@@ -395,6 +554,64 @@ void isi_setrate(struct isiCPUInfo *info, size_t rate) {
 		info->rate = (quantum / info->runrate); // cycles per quantum
 		info->itvl = 1;
 	}
+}
+
+int isi_init_contable()
+{
+	struct isiConTable *t = &allcon;
+	t->limit = 32;
+	t->count = 0;
+	t->table = (struct isiConstruct**)malloc(t->limit * sizeof(void*));
+	return 0;
+}
+
+int isi_contable_add(struct isiConstruct *obj)
+{
+	if(!obj) return -1;
+	void *n;
+	if(allcon.count >= allcon.limit) {
+		n = realloc(allcon.table, (allcon.limit + allcon.limit) * sizeof(void*));
+		if(!n) return -5;
+		allcon.limit += allcon.limit;
+		allcon.table = (struct isiConstruct**)n;
+	}
+	allcon.table[allcon.count++] = obj;
+	return 0;
+}
+
+int isi_register(struct isiConstruct *obj)
+{
+	int itype;
+	int inum;
+	if(!obj) return -1;
+	if(!obj->name) return -1;
+	if(!obj->objtype) return -1;
+	itype = obj->objtype & 0xf000;
+	inum = obj->objtype & 0x0fff;
+	for(uint32_t i = 0; i < allcon.count; i++) {
+		int ltype = allcon.table[i]->objtype & 0xf000;
+		int lnum = allcon.table[i]->objtype & 0x0fff;
+		if(ltype == itype) {
+			if(lnum >= inum) {
+				inum = lnum + 1;
+			}
+		}
+	}
+	obj->objtype = (itype & 0xf000) | (inum & 0x0fff);
+	isi_contable_add(obj);
+	fprintf(stderr, "object: %s registered as %04x\n", obj->name, obj->objtype);
+	return 0;
+}
+
+uint32_t isi_lookup_name(const char * name)
+{
+	if(!name) return 0;
+	for(uint32_t i = 0; i < allcon.count; i++) {
+		if(!strcmp(allcon.table[i]->name, name)) {
+			return allcon.table[i]->objtype;
+		}
+	}
+	return 0;
 }
 
 int isi_inittable(struct isiDevTable *t)
@@ -485,36 +702,32 @@ int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
 	DCPU_init((struct isiInfo*)cpu, nmem);
 	isi_create_object(ISIT_BUSDEV, (struct objtype**)&bus);
 	HWM_CreateBus(bus);
-	isi_createdev(&ninfo);
-	HWM_CreateDevice(ninfo, "nya_lem");
+	isi_make_object(isi_lookup_name("nya_lem"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 
-	isi_createdev(&ninfo);
-	HWM_CreateDevice(ninfo, "clock");
+	isi_make_object(isi_lookup_name("clock"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 
-	isi_createdev(&ninfo);
-	HWM_CreateDevice(ninfo, "keyboard");
+	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
-	uint8_t *rom;
+	uint8_t *rom = 0;
 	uint32_t rsize = 0;
 	if(binf) {
-		loadbinfile(binf, loadendian, &rom, &rsize);
-		if(rsize > 0x20000) rsize = 0x20000;
-		char *ist;
-		asprintf(&ist, "rom:size=%u", rsize);
-		isi_createdev(&ninfo);
-		HWM_CreateDevice(ninfo, ist);
-		memcpy(((char*)ninfo->rvstate)+2, rom, rsize);
-		*((uint16_t*)ninfo->rvstate) = rsize >> 1;
-		isi_attach(bus, ninfo);
-		free(ist);
-		free(rom);
+		if(!loadbinfile(binf, loadendian, &rom, &rsize)) {
+			if(rsize > 0x20000) rsize = 0x20000;
+			uint8_t ist[24];
+			ist[0] = 0;
+			isi_write_parameter(ist, 24, 1, &rsize, sizeof(uint32_t));
+			isi_make_object(isi_lookup_name("rom"), (struct objtype**)&ninfo, ist, 24);
+			memcpy(((char*)ninfo->rvstate)+2, rom, rsize);
+			*((uint16_t*)ninfo->rvstate) = rsize >> 1;
+			isi_attach(bus, ninfo);
+			free(rom);
+		}
 	}
 	isi_attach((struct isiInfo*)cpu, bus);
 
-	isi_createdev(&ninfo);
-	HWM_CreateDevice(ninfo, "mack_35fd");
+	isi_make_object(isi_lookup_name("mack_35fd"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 	if(diskf) {
 		uint64_t dsk = 0;
@@ -562,6 +775,7 @@ void handle_stdin()
 		break;
 	case 'x':
 		haltnow = 1;
+		i = read(0, ccv, 1);
 		break;
 	case 'n':
 		fprintf(stderr, "\n\n\n\n");
@@ -612,6 +826,16 @@ int handle_newsessions()
 	ses->out = (uint8_t*)malloc(2048);
 	ses->sfd = fdn;
 	memcpy(&ses->r_addr, &ripn, sizeof(struct sockaddr_in));
+	if(ripn.sin_family == AF_INET) {
+		union {
+			uint8_t a[4];
+			uint32_t la;
+		} ipa;
+		ipa.la = ripn.sin_addr.s_addr;
+		fprintf(stderr, "net-server: new IP session from: %d.%d.%d.%d:%d\n"
+			, ipa.a[0], ipa.a[1], ipa.a[2], ipa.a[3], ntohs(ripn.sin_port)
+		);
+	}
 	isi_pushses(ses);
 	return 0;
 }
@@ -658,6 +882,7 @@ int handle_session_rd(struct isiSession *ses, struct timespec mtime)
 	} else {
 readagain:
 		l = ((*(uint32_t*)ses->in) & 0xfffff);
+		if(l > 1400) l = 1400;
 		if(ses->rcv < 4+l) {
 			i = read(ses->sfd, ses->in+ses->rcv, (4+l)-ses->rcv);
 		} else {
@@ -670,6 +895,7 @@ readagain:
 		ses->rcv += i;
 		if(ses->rcv >= 4) {
 			l = ((*(uint32_t*)ses->in) & 0xfffff);
+			if(l > 1400) l = 1400;
 			if(ses->rcv < 4+l) goto readagain;
 		}
 	}
@@ -679,6 +905,7 @@ readagain:
 	uint32_t *pm = (uint32_t*)ses->in;
 	uint32_t *pr = (uint32_t*)ses->out;
 	l = mc & 0xfffff; mc >>= 20;
+	if(l > 1400) l = 1400;
 	/* handle message here */
 	switch(mc) {
 	case 0x010: /* keepalive/ping */
@@ -821,6 +1048,8 @@ int main(int argc, char**argv, char**envp)
 	int premlimit = 0;
 	int extrafds = 0;
 
+	isi_init_contable();
+	isi_register_objects();
 	isi_objtable_init();
 	isi_init_sestable();
 	isi_inittable(&alldev);

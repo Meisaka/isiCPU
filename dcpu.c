@@ -23,8 +23,10 @@ static int DCPU_run(struct isiInfo *, struct timespec);
 
 static int DCPU_AttachBus(struct isiInfo *info, struct isiInfo *dev)
 {
-	if(!info || !dev) return -1;
-	if(dev->id.objtype != ISIT_DCPUBUS) return -1;
+	if(!info || !dev) return ISIERR_INVALIDPARAM;
+	if(dev->id.objtype == ISIT_MEM6416) return 0;
+	if(dev->id.objtype != ISIT_DCPUBUS) return ISIERR_NOCOMPAT;
+	if(!info->mem) return ISIERR_MISSPREREQ;
 	return 0;
 }
 
