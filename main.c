@@ -11,7 +11,6 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <signal.h>
-#include "dcpu.h"
 #include "dcpuhw.h"
 #include "cputypes.h"
 #define CLOCK_MONOTONIC_RAW             4   /* since 2.6.28 */
@@ -53,6 +52,8 @@ struct isiSessionTable allses;
 void isi_run_sync(struct timespec crun);
 void isi_register_objects();
 int isi_scan_dir();
+void showdisasm_dcpu(const struct isiInfo *info);
+void showdiag_dcpu(const struct isiInfo* info, int fmt);
 
 static const char * const gsc_usage =
 "Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n%s -E <file>\n"
@@ -112,113 +113,6 @@ void sysfaulthdl(int ssn) {
 		fprintf(stderr, "SOCKET SIGNALED!\n");
 	} else {
 		fprintf(stderr, "Unknown signal\n");
-	}
-}
-
-static const char * DCPUOP[] = {
-	"---", "SET", "ADD", "SUB", "MUL", "MLI", "DIV", "DVI",
-	"MOD", "MDI", "AND", "BOR", "XOR", "SHR", "ASR", "SHL",
-	"IFB", "IFC", "IFE", "IFN", "IFG", "IFA", "IFL", "IFU",
-	"!18", "!19", "ADX", "SBX", "!1C", "!1D", "STI", "STD",
-	"---", "JSR", "!02", "!03", "!04", "!05", "!06", "!07",
-	"INT", "IAG", "IAS", "RFI", "IAQ", "!0d", "!0e", "!0f",
-	"HWN", "HWQ", "HWI", "!13", "!14", "!15", "!16", "!17",
-	"!18", "!19", "!1a", "!1b", "!1c", "!1d", "!1e", "!1f",
-};
-static const char * DCPUP[] = {
-	"A", "B", "C", "X", "Y", "Z", "I", "J",
-	"[A]", "[B]", "[C]", "[X]", "[Y]", "[Z]", "[I]", "[J]",
-	"[A+%04x]", "[B+%04x]", "[C+%04x]", "[X+%04x]", "[Y+%04x]", "[Z+%04x]", "[I+%04x]", "[J+%04x]",
-	"PSHPOP", "[SP]", "[SP+%04x]", "SP", "PC", "EX", "[%04x]", "%04x",
-	"-1", " 0", " 1", " 2", " 3", " 4", " 5", " 6",
-	" 7", " 8", " 9", "10", "11", "12", "13", "14",
-	"15", "16", "17", "18", "19", "20", "21", "22",
-	"23", "24", "25", "26", "27", "28", "29", "30",
-};
-
-static const char * DIAG_L4 =
-	" A    B    C    X    Y    Z   \n"
-	"%04x %04x %04x %04x %04x %04x \n"
-	" I    J    PC   SP   EX   IA   CL\n"
-	"%04x %04x %04x %04x %04x %04x % 2d \n";
-static const char * DIAG_L2 =
-	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
-	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
-
-void showdisasm_dcpu(const struct isiInfo *info)
-{
-	const DCPU * cpu = (const DCPU*)info->rvstate;
-	uint16_t ma = cpu->PC;
-	uint16_t m = (cpu->memptr)->ram[ma++];
-	int op = m & 0x1f;
-	int ob = (m >> 5) & 0x1f;
-	int oa = (m >> 10) & 0x3f;
-	int nwa, nwb, lu;
-	uint16_t lua, lub;
-	lu = 0;
-	if(oa >= 8 && oa < 16) {
-		lu |= 1;
-		lua = cpu->R[oa - 8];
-	} else if((oa >= 16 && oa < 24) || oa == 26 || oa == 30 || oa == 31) {
-		nwa = (cpu->memptr)->ram[ma++];
-		if(oa != 31) lu |= 1;
-		if(oa >= 16 && oa < 24) {
-			lua = cpu->R[oa - 16] + nwa;
-		} else if(oa == 24 || oa == 25) {
-			lua = cpu->SP;
-		} else if(oa == 26) {
-			lua = cpu->SP + nwa;
-		} else if(oa == 30) {
-			lua = nwa;
-		}
-	}
-	if(op) {
-		if(ob >= 8 && ob < 16) {
-			lu |= 2;
-			lub = cpu->R[ob - 8];
-		} else if((ob >= 16 && ob < 24) || ob == 26 || ob == 30 || ob == 31) {
-			nwb = (cpu->memptr)->ram[ma++];
-			if(ob != 31) lu |= 2;
-			if(ob >= 16 && ob < 24) {
-				lub = cpu->R[ob - 16] + nwb;
-			} else if(ob == 24) {
-				lub = cpu->SP - 1;
-			} else if(ob == 25) {
-				lub = cpu->SP;
-			} else if(ob == 26) {
-				lub = cpu->SP + nwb;
-			} else if(ob == 30) {
-				lub = nwb;
-			}
-		}
-		fprintf(stderr, "%s ", DCPUOP[op]);
-		fprintf(stderr, DCPUP[ob], nwb);
-		fprintf(stderr, ", ");
-		fprintf(stderr, DCPUP[oa], nwa);
-	} else {
-		fprintf(stderr, "%s ", DCPUOP[32+ob]);
-		fprintf(stderr, DCPUP[oa], nwa);
-	}
-	if(lu & 2) {
-		fprintf(stderr, "  b: %04x [%04x]", lub, cpu->memptr->ram[lub]);
-	}
-	if(lu & 1) {
-		fprintf(stderr, "  a: %04x [%04x]", lua, cpu->memptr->ram[lua]);
-	}
-	fprintf(stderr, "\n");
-}
-
-void showdiag_dcpu(const struct isiInfo* info, int fmt)
-{
-	const struct isiCPUInfo *l_info = (const struct isiCPUInfo *)info;
-	const DCPU * cpu = (const DCPU*)info->rvstate;
-	const char *diagt;
-	diagt = fmt ? DIAG_L2 : DIAG_L4;
-	fprintf(stderr, diagt,
-	cpu->R[0],cpu->R[1],cpu->R[2],cpu->R[3],cpu->R[4],cpu->R[5],
-	cpu->R[6],cpu->R[7],cpu->PC,cpu->SP,cpu->EX,cpu->IA, l_info->cycl);
-	if(fmt) {
-		showdisasm_dcpu(info);
 	}
 }
 
@@ -421,7 +315,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 	case ISIT_MEM6416: objsize = sizeof(struct memory64x16); break;
 	case ISIT_CPU: objsize = sizeof(struct isiCPUInfo); break;
 	case ISIT_BUSDEV: objsize = sizeof(struct isiBusInfo); break;
-	case ISIT_DCPUHW: objsize = sizeof(struct isiInfo); break;
+	case ISIT_HARDWARE: objsize = sizeof(struct isiInfo); break;
 	}
 	if(objsize) {
 		*sz = objsize;
@@ -611,6 +505,7 @@ uint32_t isi_lookup_name(const char * name)
 			return allcon.table[i]->objtype;
 		}
 	}
+	fprintf(stderr, "object: lookup name failed for: %s\n", name);
 	return 0;
 }
 
@@ -684,7 +579,7 @@ int isi_pushdev(struct isiDevTable *t, struct isiInfo *d)
 
 int isi_createdev(struct isiInfo **ndev)
 {
-	return isi_create_object(ISIT_DCPUHW, (struct objtype**)ndev);
+	return isi_create_object(ISIT_HARDWARE, (struct objtype**)ndev);
 }
 
 int isi_createcpu(struct isiCPUInfo **ndev)
@@ -692,16 +587,16 @@ int isi_createcpu(struct isiCPUInfo **ndev)
 	return isi_create_object(ISIT_CPU, (struct objtype**)ndev);
 }
 
-int isi_addcpu(struct isiCPUInfo *cpu, const char *cfg)
+int isi_addcpu()
 {
 	struct isiInfo *bus, *ninfo;
-	isi_setrate(cpu, 100000); // 100kHz
-	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
+	struct isiCPUInfo *cpu;
 	isiram16 nmem;
-	isi_create_object(ISIT_MEM6416, (struct objtype**)&nmem);
-	DCPU_init((struct isiInfo*)cpu, nmem);
-	isi_create_object(ISIT_BUSDEV, (struct objtype**)&bus);
-	HWM_CreateBus(bus);
+	isi_make_object(isi_lookup_name("dcpu"), (struct objtype**)&cpu, 0, 0);
+	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
+	isi_make_object(isi_lookup_name("memory_16x64k"), (struct objtype**)&nmem, 0, 0);
+	isi_attach((struct isiInfo*)cpu, (struct isiInfo*)nmem);
+	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
 	isi_make_object(isi_lookup_name("nya_lem"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 
@@ -750,7 +645,9 @@ void handle_stdin()
 	if(i < 1) return;
 	switch(cc) {
 	case 10:
-		((struct isiCPUInfo*)allcpu.table[0])->ctl |= ISICTL_STEPE;
+		if(allcpu.count && ((struct isiCPUInfo*)allcpu.table[0])->ctl & ISICTL_DEBUG) {
+			((struct isiCPUInfo*)allcpu.table[0])->ctl |= ISICTL_STEPE;
+		}
 		break;
 	case 'r':
 		i = read(0, ccv, 5);
@@ -769,7 +666,11 @@ void handle_stdin()
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			ti = ((isiram16)allcpu.table[0]->mem)->ram[t];
+			if(allcpu.count) {
+				ti = ((isiram16)allcpu.table[0]->mem)->ram[t];
+			} else {
+				t = ti = 0;
+			}
 			fprintf(stderr, "READ %04x:%04x\n", t, ti);
 		}
 		break;
@@ -778,11 +679,11 @@ void handle_stdin()
 		i = read(0, ccv, 1);
 		break;
 	case 'n':
-		fprintf(stderr, "\n\n\n\n");
+		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_synctable();
 		break;
 	case 'l':
-		fprintf(stderr, "\n\n\n\n");
+		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
 		u = 0;
 		while(u < allobj.count) {
 			fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u]->id, allobj.table[u]->objtype);
@@ -1084,10 +985,7 @@ int main(int argc, char**argv, char**envp)
 	}
 
 	for(cux = 0; cux < softcpumax; cux++) {
-		struct isiCPUInfo *ncpu;
-		isi_createcpu(&ncpu);
-		isi_addcpu(ncpu, "");
-		isi_pushdev(&allcpu, (struct isiInfo*)ncpu);
+		isi_addcpu();
 	}
 	if(flagsvr) {
 		makewaitserver();
@@ -1103,7 +1001,7 @@ int main(int argc, char**argv, char**envp)
 	fetchtime(&LTUTime);
 	lucycles = 0; // how many cycles ran (debugging)
 	cux = 0; // CPU index - currently never changes
-	if(rqrun && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
+	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
 		showdiag_dcpu(allcpu.table[cux], 1);
 	}
 	extrafds = (flagsvr?1:0) + (rqrun?1:0);
@@ -1115,7 +1013,9 @@ int main(int argc, char**argv, char**envp)
 		ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cux]);
 		fetchtime(&CRun);
 
-		{
+		if(!allcpu.count) {
+			usleep(10000);
+		} else {
 			int ccq = 0;
 			int tcc = numberofcpus * 2;
 			if(tcc < 20) tcc = 20;
@@ -1147,7 +1047,7 @@ int main(int argc, char**argv, char**envp)
 			if(rqrun) { // interactive diag
 			double clkdelta;
 			float clkrate;
-			if(!flagdbg) showdiag_dcpu(allcpu.table[0], 0);
+			if(!flagdbg && allcpu.count) showdiag_dcpu(allcpu.table[0], 0);
 			clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
 			clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 			if(!lucpus) lucpus = 1;
@@ -1156,7 +1056,7 @@ int main(int argc, char**argv, char**envp)
 					clkdelta, numberofcpus, clkrate, gccq,
 					sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
 					);
-			if(!flagdbg) showdiag_up(4);
+			if(!flagdbg && allcpu.count) showdiag_up(4);
 			}
 			fetchtime(&LTUTime);
 			if(gccq >= sts.cpusched / numberofcpus ) {
@@ -1257,8 +1157,9 @@ sessionerror:
 			}
 		}
 		if(!flagdbg) {
-			cux++;
-			if(cux > allcpu.count - 1) {
+			if(cux < allcpu.count) {
+				cux++;
+			} else {
 				cux = 0;
 			}
 		} else {

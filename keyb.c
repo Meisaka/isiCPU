@@ -14,10 +14,10 @@ ISIREFLECT(struct LKBD,
 	ISIR(LKBD, uint8_t, keydown)
 )
 
-int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
-struct isidcpudev Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
-struct isiConstruct Keyboard_Con = {
-	0x5000, "keyboard", "Generic Keyboard",
+static int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static struct isidcpudev Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
+static struct isiConstruct Keyboard_Con = {
+	ISIT_HARDWARE, "keyboard", "Generic Keyboard",
 	NULL, Keyboard_Init, NULL,
 	&ISIREFNAME(struct LKBD), NULL,
 	&Keyboard_Meta
@@ -128,7 +128,7 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	return 0;
 }
 
-int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	info->MsgIn = Keyboard_MsgIn;
 	return 0;

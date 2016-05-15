@@ -3,15 +3,11 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <stdint.h>
-#include "dcpu.h"
 #include "cputypes.h"
 
 #define MF_ECIV 0xeca7410c
 #define MF_NYAE 0x1c6c8b36
 #define MF_MACK 0x1eb37e91
-
-int HWM_FreeAll(struct isiInfo *info);
-int HWM_CreateBus(struct isiInfo *info);
 
 struct isidcpudev {
 	uint16_t verid;

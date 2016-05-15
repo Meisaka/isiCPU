@@ -183,6 +183,7 @@ int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int lim
 
 void isi_addtime(struct timespec *, size_t nsec);
 int isi_time_lt(struct timespec *, struct timespec *);
+void isi_setrate(struct isiCPUInfo *info, size_t rate);
 
 int isi_register(struct isiConstruct *obj);
 int isi_inittable(struct isiDevTable *t);
@@ -237,11 +238,8 @@ int isi_remove_sync(struct objtype *target);
 #define ISIT_DCPU      0x3001
 #define ISIT_ENDCPU    0x4000
 #define ISIT_BUSDEV    0x4000
-#define ISIT_DCPUBUS   0x4001
 #define ISIT_ENDBUSDEV 0x5000
-#define ISIT_DCPUHW    0x5000
-
-void DCPU_init(struct isiInfo *, isiram16 ram);
+#define ISIT_HARDWARE  0x5000
 
 #endif
 

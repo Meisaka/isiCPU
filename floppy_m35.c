@@ -39,10 +39,10 @@ ISIREFLECT(struct Disk_M35FD_svstate,
 	ISIR(Disk_M35FD_svstate, uint16_t, svbuf)
 )
 
-int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
-struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
-struct isiConstruct Disk_M35FD_Con = {
-	0x5000, "mack_35fd", "Mackapar M35FD",
+static int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
+static struct isiConstruct Disk_M35FD_Con = {
+	ISIT_HARDWARE, "mack_35fd", "Mackapar M35FD",
 	NULL, Disk_M35FD_Init, NULL,
 	&ISIREFNAME(struct Disk_M35FD_rvstate), &ISIREFNAME(struct Disk_M35FD_svstate),
 	&Disk_M35FD_Meta
@@ -220,7 +220,7 @@ static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t 
 	return 1;
 }
 
-int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	info->Reset = Disk_M35FD_Reset; /* power on reset */
 	info->MsgIn = Disk_M35FD_MsgIn; /* message from CPU or network */

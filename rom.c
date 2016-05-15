@@ -8,7 +8,7 @@ ISIREFLECT(struct EEROM_rvstate,
 	ISIR(EEROM_rvstate, uint16_t, sz)
 )
 
-int EEROM_SIZE(int t, const uint8_t *cfg, size_t lcfg, size_t *sz)
+static int EEROM_SIZE(int t, const uint8_t *cfg, size_t lcfg, size_t *sz)
 {
 	uint32_t rqs = 0;
 	rqs = 0;
@@ -21,10 +21,10 @@ int EEROM_SIZE(int t, const uint8_t *cfg, size_t lcfg, size_t *sz)
 	}
 }
 
-int EEROM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
-struct isidcpudev EEROM_Meta = {0x0000,0x17400011,MF_ECIV};
-struct isiConstruct EEROM_Con = {
-	0x5000, "rom", "Embedded ROM",
+static int EEROM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static struct isidcpudev EEROM_Meta = {0x0000,0x17400011,MF_ECIV};
+static struct isiConstruct EEROM_Con = {
+	ISIT_HARDWARE, "rom", "Embedded ROM",
 	0, EEROM_Init, EEROM_SIZE,
 	&ISIREFNAME(struct EEROM_rvstate), NULL,
 	&EEROM_Meta
@@ -79,7 +79,7 @@ static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 1;
 }
 
-int EEROM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
+static int EEROM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
 	info->MsgIn = EEROM_MsgIn;
 	return 0;

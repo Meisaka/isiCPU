@@ -1,6 +1,18 @@
 
 #include "cputypes.h"
 
+static struct isiConstruct Mem6416_Con = {
+	ISIT_MEM6416, "memory_16x64k", "64k x 16 Memory",
+	0, 0, 0,
+	NULL, NULL,
+	0
+};
+
+void Memory_Register()
+{
+	isi_register(&Mem6416_Con);
+}
+
 uint16_t isi_cpu_rdmem(isiram16 ram, uint16_t a)
 {
 	return ram->ram[a];

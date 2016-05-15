@@ -17,10 +17,10 @@ ISIREFLECT(struct Clock_rvstate,
 	ISIR(Clock_rvstate, uint16_t, ctime)
 )
 
-int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
-struct isidcpudev Clock_Meta = {0x0001,0x12d0b402,MF_ECIV};
-struct isiConstruct Clock_Con = {
-	0x5000, "clock", "Generic Clock",
+static int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static struct isidcpudev Clock_Meta = {0x0001,0x12d0b402,MF_ECIV};
+static struct isiConstruct Clock_Con = {
+	ISIT_HARDWARE, "clock", "Generic Clock",
 	NULL, Clock_Init, NULL,
 	&ISIREFNAME(struct Clock_rvstate), NULL,
 	&Clock_Meta
@@ -98,7 +98,7 @@ static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 1;
 }
 
-int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	info->Reset = Clock_Reset;
 	info->MsgIn = Clock_MsgIn;

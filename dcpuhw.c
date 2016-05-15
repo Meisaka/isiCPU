@@ -3,7 +3,19 @@
 #include <string.h>
 #define DEBUG_DCPUHW 1
 
-int HWM_FreeAll(struct isiInfo *info)
+static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static struct isiConstruct DCPUBUS_Con = {
+	ISIT_BUSDEV, "dcpu_hwbus", "DCPU Hardware backplane",
+	0, HWM_Init, 0,
+	NULL, NULL,
+	0
+};
+void DCPUBUS_Register()
+{
+	isi_register(&DCPUBUS_Con);
+}
+
+static int HWM_FreeAll(struct isiInfo *info)
 {
 	if(!info) return -1;
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
@@ -19,7 +31,7 @@ int HWM_FreeAll(struct isiInfo *info)
 	return 0;
 }
 
-int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
+static int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 {
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	if(!dev) return -1;
@@ -30,7 +42,7 @@ int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
-int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
+static int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
 {
 	size_t k;
 	size_t hs;
@@ -48,7 +60,7 @@ int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
-int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
 {
 	int r;
 	r = 1;
@@ -103,7 +115,7 @@ int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 	return r;
 }
 
-int HWM_Run(struct isiInfo *info, struct timespec crun)
+static int HWM_Run(struct isiInfo *info, struct timespec crun)
 {
 	size_t k;
 	size_t hs;
@@ -119,18 +131,17 @@ int HWM_Run(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-int HWM_CreateBus(struct isiInfo *info)
+static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	if(!info) return -1;
 #if DEBUG_MEM == 1
 	fprintf(stderr, "hwm: init bus\n");
 #endif
-	info->id.objtype = ISIT_DCPUBUS;
 	info->RunCycles = HWM_Run;
-	info->Reset = NULL;
 	info->MsgIn = HWM_Query;
 	info->Attach = HWM_DeviceAdd;
 	info->Attached = HWM_Attached;
+	info->Delete = HWM_FreeAll;
 	return 0;
 }
 
