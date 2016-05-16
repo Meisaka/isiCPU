@@ -10,7 +10,7 @@
 ```
 code   = (head >> 20) & 0xfff     ;// ( 12 bits )
 flags  = (head >> 13) & 0x7f      ;// (  7 bits )
-length = (head      ) & 0x1fff   ;// ( 13 bits )
+length = (head      ) & 0x1fff    ;// ( 13 bits )
 ```
 
  - length is message length after head.
@@ -79,8 +79,9 @@ length = (head      ) & 0x1fff   ;// ( 13 bits )
 ##### Attach Point Enums
  - values > 0 are normal bus attach points
  - values < 0 are special attach points
+
 |    Point   |   Value
-|------------|------------
+|:----------:|------------
 | AT_BUS_END |     -1
 |    DOWN    |     -2
 
