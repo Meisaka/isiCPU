@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include "cputypes.h"
+#include "netmsg.h"
 
 static struct isiSyncTable {
 	struct isiNetSync ** table;
@@ -352,7 +353,7 @@ void isi_run_sync(struct timespec crun)
 						for(z = 0; z < sln; z++) {
 							mw[6+z] = mem->ram[(sta+z)&mask] & 0xffff;
 						}
-						*(uint32_t*)(allsync.out) = 0x0E100000|(8+(sln<<1));
+						*(uint32_t*)(allsync.out) = ISIMSG(SYNCMEM32, 0, 8+(sln<<1));
 						for(k = 0; k < allses.count; k++) {
 							struct isiSession *ses;
 							ses = allses.table[k];
@@ -370,7 +371,7 @@ void isi_run_sync(struct timespec crun)
 					rfl = dev->rvproto;
 					*(uint32_t*)(allsync.out+4) = dev->id.id;
 					memcpy(allsync.out+8, dev->rvstate, rfl->length);
-					*(uint32_t*)(allsync.out) = 0x0E200000|(4+(rfl->length));
+					*(uint32_t*)(allsync.out) = ISIMSG(SYNCRVS, 0, 4+(rfl->length));
 					for(k = 0; k < allses.count; k++) {
 						struct isiSession *ses;
 						ses = allses.table[k];
@@ -382,7 +383,7 @@ void isi_run_sync(struct timespec crun)
 					rfl = dev->svproto;
 					*(uint32_t*)(allsync.out+4) = dev->id.id;
 					memcpy(allsync.out+8, dev->svstate, rfl->length);
-					*(uint32_t*)(allsync.out) = 0x0E300000|(4+(rfl->length));
+					*(uint32_t*)(allsync.out) = ISIMSG(SYNCSVS, 0, 4+(rfl->length));
 					for(k = 0; k < allses.count; k++) {
 						struct isiSession *ses;
 						ses = allses.table[k];

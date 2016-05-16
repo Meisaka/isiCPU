@@ -13,6 +13,7 @@
 #include <signal.h>
 #include "dcpuhw.h"
 #include "cputypes.h"
+#include "netmsg.h"
 #define CLOCK_MONOTONIC_RAW             4   /* since 2.6.28 */
 #define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
@@ -562,7 +563,7 @@ int isi_delete_ses(struct isiSession *s)
 	return 0;
 }
 
-int isi_pushdev(struct isiDevTable *t, struct isiInfo *d)
+int isi_push_dev(struct isiDevTable *t, struct isiInfo *d)
 {
 	if(!d) return -1;
 	void *n;
@@ -575,6 +576,22 @@ int isi_pushdev(struct isiDevTable *t, struct isiInfo *d)
 	}
 	t->table[t->count++] = d;
 	return 0;
+}
+
+int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target)
+{
+	size_t i;
+	if(!id) return -1;
+	for(i = 0; i < t->count; i++) {
+		struct isiInfo *obj = t->table[i];
+		if(obj && obj->id.id == id) {
+			if(target) {
+				*target = obj;
+			}
+			return 0;
+		}
+	}
+	return 1;
 }
 
 int isi_createdev(struct isiInfo **ndev)
@@ -749,7 +766,7 @@ int session_write(struct isiSession *ses, int len)
 int session_write_msg(struct isiSession *ses)
 {
 	int len;
-	len = (*(uint32_t*)(ses->out)) & 0xfffff;
+	len = (*(uint32_t*)(ses->out)) & 0x1fff;
 	if(len > 1300) {
 		len = 1300;
 		*(uint32_t*)(ses->out) = ((*(uint32_t*)ses->out) & 0xfff00000) | len;
@@ -760,7 +777,7 @@ int session_write_msg(struct isiSession *ses)
 int session_write_msgex(struct isiSession *ses, void *buf)
 {
 	int len;
-	len = (*(uint32_t*)(buf)) & 0xfffff;
+	len = (*(uint32_t*)(buf)) & 0x1fff;
 	if(len > 1300) {
 		len = 1300;
 		*(uint32_t*)(buf) = ((*(uint32_t*)buf) & 0xfff00000) | len;
@@ -782,7 +799,7 @@ int handle_session_rd(struct isiSession *ses, struct timespec mtime)
 		i = read(ses->sfd, ses->in+ses->rcv, 4-ses->rcv);
 	} else {
 readagain:
-		l = ((*(uint32_t*)ses->in) & 0xfffff);
+		l = ((*(uint32_t*)ses->in) & 0x1fff);
 		if(l > 1400) l = 1400;
 		if(ses->rcv < 4+l) {
 			i = read(ses->sfd, ses->in+ses->rcv, (4+l)-ses->rcv);
@@ -795,7 +812,7 @@ readagain:
 	if(ses->rcv < 4) {
 		ses->rcv += i;
 		if(ses->rcv >= 4) {
-			l = ((*(uint32_t*)ses->in) & 0xfffff);
+			l = ((*(uint32_t*)ses->in) & 0x1fff);
 			if(l > 1400) l = 1400;
 			if(ses->rcv < 4+l) goto readagain;
 		}
@@ -805,13 +822,13 @@ readagain:
 	mc = *(uint32_t*)ses->in;
 	uint32_t *pm = (uint32_t*)ses->in;
 	uint32_t *pr = (uint32_t*)ses->out;
-	l = mc & 0xfffff; mc >>= 20;
+	l = mc & 0x1fff; mc >>= 20;
 	if(l > 1400) l = 1400;
 	/* handle message here */
 	switch(mc) {
-	case 0x010: /* keepalive/ping */
+	case ISIM_PING: /* keepalive/ping */
 		break;
-	case 0x011: /* get all accessable objects */
+	case ISIM_GETOBJ: /* get all accessable objects */
 	{
 		size_t i;
 		uint32_t ec = 0;
@@ -824,25 +841,132 @@ readagain:
 				ec+=2;
 			}
 			if(ec > 160) {
-				pr[0] = 0x20000000 | (ec*4);
-				session_write(ses, 4+(ec*4));
+				pr[0] = ISIMSG(R_GETOBJ, 0, ec*4);
+				session_write_msg(ses);
 				ec = 0;
 			}
 		}
-		pr[0] = 0x20100000 | (ec*4);
-		session_write(ses, 4+(ec*4));
+		pr[0] = ISIMSG(L_GETOBJ, 0, ec*4);
+		session_write_msg(ses);
 	}
 		break;
-	case 0x012: /* sync everything! */
+	case ISIM_SYNCALL: /* sync everything! */
 		isi_resync_all();
 		break;
-	case 0x080:
+	case ISIM_GETCLASSES:
+		break;
+	case ISIM_GETHEIR: /* get heirarchy */
+	{
+		size_t i;
+		uint32_t ec = 0;
+		fprintf(stderr, "net-msg: [%08x]: list heir\n", ses->id.id);
+		for(i = 0; i < allobj.count; i++) {
+			struct objtype *obj = allobj.table[i];
+			struct isiInfo *info;
+			if(obj && obj->objtype >= 0x2f00) {
+				info = (struct isiInfo*)obj;
+				pr[1+ec] = obj->id;
+				pr[2+ec] = info->dndev ? info->dndev->id.id : 0;
+				pr[3+ec] = info->updev ? info->updev->id.id : 0;
+				pr[4+ec] = info->mem ? ((struct objtype*)info->mem)->id : 0;
+				ec+=4;
+			}
+			if(ec > 80) {
+				pr[0] = ISIMSG(R_GETHEIR, 0, ec*4);
+				session_write_msg(ses);
+				ec = 0;
+			}
+		}
+		pr[0] = ISIMSG(L_GETHEIR, 0, (ec*4));
+		session_write_msg(ses);
+	}
+		break;
+	case ISIM_NEWOBJ:
+		if(l < 4) break;
+		pr[0] = ISIMSG(R_NEWOBJ, 0, 12);
+		pr[1] = 0;
+		pr[2] = pm[1];
+		{
+			struct objtype *a;
+			a = 0;
+			pr[3] = (uint32_t)isi_make_object(pm[1], &a, ses->in+8, l - 4);
+			if(a) {
+				pr[1] = a->id;
+			}
+		}
+		session_write_msg(ses); /* TODO multisession */
+		break;
+	case ISIM_DELOBJ:
+		if(l < 4) break;
+		break;
+	case ISIM_ATTACH:
+		if(l < 8) break;
+		pr[0] = ISIMSG(R_ATTACH, 0, 8);
+		pr[1] = pm[1];
+		{
+			struct objtype *a;
+			struct objtype *b;
+			if(isi_find_obj(pm[1], &a) || isi_find_obj(pm[2], &b)) {
+				pr[2] = (uint32_t)ISIERR_NOTFOUND;
+			} else if(a->objtype < 0x2f00){
+				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
+			} else {
+				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, (struct isiInfo*)b);
+			}
+		}
+		session_write_msg(ses);
+		break;
+	case ISIM_DEATTACH:
+		if(l < 8) break;
+		pr[0] = ISIMSG(R_ATTACH, 0, 8);
+		pr[1] = pm[1];
+		pr[2] = (uint32_t)ISIERR_FAIL;
+		session_write_msg(ses);
+		break;
+	case ISIM_START:
+		if(l < 4) break;
+	{
+		pr[0] = ISIMSG(R_START, 0, 8);
+		pr[1] = pm[1];
+		pr[2] = (uint32_t)ISIERR_FAIL;
+		struct isiInfo *a;
+		if(isi_find_dev(&allcpu, pm[1], &a)) {
+			pr[2] = (uint32_t)ISIERR_NOTFOUND;
+			if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+				pr[2] = (uint32_t)ISIERR_NOTFOUND;
+			} else if(a->id.objtype >= 0x3000 && a->id.objtype < 0x3fff) {
+				isi_push_dev(&allcpu, a);
+				if(a->Reset) a->Reset(a);
+				fetchtime(&a->nrun);
+				pr[2] = 0;
+			} else {
+				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
+			}
+		} else {
+			if(a->Reset) a->Reset(a);
+			pr[2] = 0;
+		}
+		session_write_msg(ses); /* TODO multisession */
+	}
+		break;
+	case ISIM_STOP:
+		if(l < 4) break;
+		pr[0] = ISIMSG(R_STOP, 0, 8);
+		pr[1] = pm[1];
+		pr[2] = (uint32_t)ISIERR_FAIL;
+		session_write_msg(ses); /* TODO multisession */
+		break;
+	case ISIM_ATTACHAT:
+		if(l < 16) break;
+		pr[0] = ISIMSG(R_ATTACH, 0, 8);
+		pr[1] = pm[1];
+		pr[2] = (uint32_t)ISIERR_FAIL;
+		session_write_msg(ses);
+		break;
+	case ISIM_MSGOBJ:
+		if(l < 6) break;
 	{
 		struct isiInfo *info;
-		if(l < 6) {
-			fprintf(stderr, "net-msg: [%08x]: short 0x%03x +%05x\n", ses->id.id, mc, l);
-			break;
-		}
 		if(isi_find_obj(pm[1], (struct objtype**)&info)) {
 			fprintf(stderr, "net-msg: [%08x]: not found [%08x]\n", ses->id.id, pm[1]);
 			break;
@@ -853,6 +977,11 @@ readagain:
 			}
 		}
 	}
+		break;
+	case ISIM_SYNCMEM16:
+	case ISIM_SYNCMEM32:
+	case ISIM_SYNCRVS:
+	case ISIM_SYNCSVS:
 		break;
 	default:
 		fprintf(stderr, "net-session: [%08x]: 0x%03x +%05x\n", ses->id.id, mc, l);
@@ -994,10 +1123,6 @@ int main(int argc, char**argv, char**envp)
 	sigaction(SIGINT, &hnler, NULL);
 	sigaction(SIGPIPE, &hnler, NULL);
 
-	for(cux = 0; cux < allcpu.count; cux++) {
-		fetchtime(&allcpu.table[cux]->nrun);
-		allcpu.table[cux]->Reset(allcpu.table[cux]);
-	}
 	fetchtime(&LTUTime);
 	lucycles = 0; // how many cycles ran (debugging)
 	cux = 0; // CPU index - currently never changes
@@ -1157,9 +1282,8 @@ sessionerror:
 			}
 		}
 		if(!flagdbg) {
-			if(cux < allcpu.count) {
-				cux++;
-			} else {
+			cux++;
+			if(!(cux < allcpu.count)) {
 				cux = 0;
 			}
 		} else {

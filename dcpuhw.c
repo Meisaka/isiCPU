@@ -35,7 +35,7 @@ static int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 {
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	if(!dev) return -1;
-	isi_pushdev(&bus->busdev, dev);
+	isi_push_dev(&bus->busdev, dev);
 #if DEBUG_DCPUHW == 1
 	fprintf(stderr, "hwm: adding device c=%d\n", bus->busdev.count);
 #endif
