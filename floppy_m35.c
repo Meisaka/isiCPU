@@ -135,7 +135,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			dev->seektrack = dev->seeksector / 18;
 			mc = dev->rwaddr = msg[4];
 			for(i = 0; i < 512; i++) {
-				dss->svbuf[i] = isi_hw_rdmem(info->mem, mc);
+				dss->svbuf[i] = isi_hw_rdmem((isiram16)info->mem, mc);
 				mc++;
 			}
 			dev->oper = 2;
@@ -183,7 +183,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 						uint16_t mc;
 						mc = dev->rwaddr;
 						for(int i = 0; i < 512; i++) {
-							isi_hw_wrmem(info->mem, mc, dr[i]);
+							isi_hw_wrmem((isiram16)info->mem, mc, dr[i]);
 							mc++;
 						}
 					} else if(dev->oper == 2) {

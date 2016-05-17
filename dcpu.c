@@ -160,6 +160,7 @@ void showdisasm_dcpu(const struct isiInfo *info)
 	int oa = (m >> 10) & 0x3f;
 	int nwa, nwb, lu;
 	uint16_t lua, lub;
+	nwa = nwb = lua = lub = 0;
 	lu = 0;
 	if(oa >= 8 && oa < 16) {
 		lu |= 1;

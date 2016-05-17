@@ -856,6 +856,35 @@ readagain:
 		isi_resync_all();
 		break;
 	case ISIM_GETCLASSES:
+	{
+		size_t i;
+		uint32_t ec = 0;
+		uint8_t *bm = ses->out + 4;
+		fprintf(stderr, "net-msg: [%08x]: list classes\n", ses->id.id);
+		for(i = 0; i < allcon.count; i++) {
+			struct isiConstruct *con = allcon.table[i];
+			size_t mln = strlen(con->name) + 1;
+			size_t mld = strlen(con->desc) + 1;
+			size_t mlt = 8 + mln + mld;
+			uint32_t eflag = 0;
+			if(mlt > 512) {
+				fprintf(stderr, "net-msg: class %04x name+desc too long %ld\n", con->objtype, mlt);
+				continue;
+			}
+			if(ec + mlt > 1300) {
+				pr[0] = ISIMSG(R_GETCLASSES, 0, ec);
+				session_write_msg(ses);
+				ec = 0;
+			}
+			memcpy(bm+ec, &con->objtype, 4);
+			memcpy(bm+ec+4, &eflag, 4);
+			memcpy(bm+ec+8, con->name, mln);
+			memcpy(bm+ec+8+mln, con->desc, mld);
+			ec+=mlt;
+		}
+		pr[0] = ISIMSG(L_GETCLASSES, 0, ec);
+		session_write_msg(ses);
+	}
 		break;
 	case ISIM_GETHEIR: /* get heirarchy */
 	{

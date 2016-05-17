@@ -81,7 +81,7 @@ int isi_text_dec(const char *text, int len, int limit, void *vv, int olen)
 
 int isi_fname_id(const char *fname, uint64_t *id)
 {
-	char *dot;
+	const char *dot;
 	size_t nlen;
 	uint64_t dsk;
 	dsk = 0;
