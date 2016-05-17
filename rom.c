@@ -11,10 +11,22 @@ ISIREFLECT(struct EEROM_rvstate,
 static int EEROM_SIZE(int t, const uint8_t *cfg, size_t lcfg, size_t *sz)
 {
 	uint32_t rqs = 0;
+	uint64_t mid = 0;
+	char * fname = 0;
 	rqs = 0;
-	if(isi_fetch_parameter(cfg, lcfg, 1, &rqs, sizeof(uint32_t))) {
-		rqs = 2048; /* pick a default if we don't get the option */
+	if(!isi_fetch_parameter(cfg, lcfg, 2, &mid, sizeof(uint64_t)) && mid) {
+		isi_find_bin(mid, &fname);
 	}
+	if(isi_fetch_parameter(cfg, lcfg, 1, &rqs, sizeof(uint32_t))) {
+		/* pick a default if we don't get the option */
+		if(!fname) {
+			rqs = 2048;
+		} else {
+			rqs = isi_fsize(fname);
+		}
+	}
+	if(rqs > 0x20000) rqs = 0x20000;
+	if(fname) free(fname);
 	switch(t) {
 	case 0: return *sz = sizeof(struct EEROM_rvstate) + rqs, 0;
 	default: return 0;
@@ -63,6 +75,11 @@ static int EEROM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 		      );
 		break;
 	case 1:
+		memcpy(
+			((struct EEROM_rvstate *)info->rvstate)+1,
+			((isiram16)info->mem)->ram,
+			((struct EEROM_rvstate *)info->rvstate)->sz << 1
+		      );
 		break;
 	}
 	return 0;
@@ -82,6 +99,32 @@ static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 static int EEROM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
 	info->MsgIn = EEROM_MsgIn;
+	uint32_t rqs = 0;
+	uint64_t mid = 0;
+	uint8_t le = 0;
+	char * fname = 0;
+	struct EEROM_rvstate *rvrom = (struct EEROM_rvstate *)info->rvstate;
+	rqs = 0;
+	if(!isi_fetch_parameter(cfg, lcfg, 2, &mid, sizeof(uint64_t)) && mid) {
+		isi_find_bin(mid, &fname);
+	}
+	if(isi_fetch_parameter(cfg, lcfg, 1, &rqs, sizeof(uint32_t))) {
+		/* pick a default if we don't get the option */
+		if(!fname) {
+			rqs = 2048;
+		} else {
+			rqs = isi_fsize(fname);
+		}
+	}
+	if(!isi_fetch_parameter(cfg, lcfg, 3, &le, 1)) {
+		le = 1;
+	}
+	if(rqs > 0x20000) rqs = 0x20000;
+	rvrom->sz = rqs >> 1;
+	if(fname) {
+		loadbinfileto(fname, le, (uint8_t*)(rvrom+1), rqs);
+		free(fname);
+	}
 	return 0;
 }
 

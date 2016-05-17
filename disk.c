@@ -79,6 +79,26 @@ int isi_text_dec(const char *text, int len, int limit, void *vv, int olen)
 	return 0;
 }
 
+int isi_fname_id(const char *fname, uint64_t *id)
+{
+	char *dot;
+	size_t nlen;
+	uint64_t dsk;
+	dsk = 0;
+	dot = strchr(fname, '.');
+	if(dot) {
+		nlen = dot - fname;
+	} else {
+		nlen = strlen(fname);
+	}
+	if(isi_text_dec(fname, nlen, 11, &dsk, 8)) {
+		fprintf(stderr, "Bad name\n");
+		return -1;
+	}
+	if(id) *id = dsk;
+	return 0;
+}
+
 int isi_scan_dir()
 {
 	struct dirent *dbuf;
@@ -96,7 +116,7 @@ int isi_scan_dir()
 	while(!readdir_r(d, dbuf, &de) && de) {
 		dot = strchr(de->d_name, '.');
 		if(dot) {
-			if(!strncmp(dot+1, "idi", 3)) {
+			if(!strncmp(dot+1, "idi", 3) || !strncmp(dot+1, "bin", 3)) {
 				fprintf(stderr, "ENT-%s ", de->d_name);
 				dsk = 0;
 				if(isi_text_dec(de->d_name, dot - de->d_name, 11, &dsk, 8)) {
@@ -128,7 +148,7 @@ int isi_test_disk(struct isiDisk *disk)
 	return 0;
 }
 
-int isi_find_disk(uint64_t diskid, char **nameout)
+int isi_find_media(uint64_t diskid, char **nameout, const char *ext)
 {
 	struct dirent *dbuf;
 	struct dirent *de;
@@ -145,7 +165,7 @@ int isi_find_disk(uint64_t diskid, char **nameout)
 	while(!readdir_r(d, dbuf, &de) && de && !found) {
 		dot = strchr(de->d_name, '.');
 		if(dot) {
-			if(!strncmp(dot+1, "idi", 3)) {
+			if(!strncmp(dot+1, ext, 3)) {
 				dsk = 0;
 				if(isi_text_dec(de->d_name, dot - de->d_name, 11, &dsk, 8)) {
 					continue;
@@ -162,6 +182,16 @@ int isi_find_disk(uint64_t diskid, char **nameout)
 	closedir(d);
 	free(dbuf);
 	return !found;
+}
+
+int isi_find_disk(uint64_t diskid, char **nameout)
+{
+	return isi_find_media(diskid, nameout, "idi");
+}
+
+int isi_find_bin(uint64_t diskid, char **nameout)
+{
+	return isi_find_media(diskid, nameout, "bin");
 }
 
 static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
@@ -274,6 +304,47 @@ int isi_write_disk_file(struct isiDisk *disk)
 		perror("write");
 		return -1;
 	}
+	return 0;
+}
+
+size_t isi_fsize(const char *path)
+{
+	struct stat fdi;
+	if(stat(path, &fdi)) { perror("stat"); return 0; }
+	return fdi.st_size;
+}
+
+int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t nsize)
+{
+	int fd, i;
+	struct stat fdi;
+	size_t f, o;
+	uint16_t eswp;
+	if(!nmem) { return -5; }
+	fd = open(path, O_RDONLY);
+	if(fd < 0) { perror("open"); return -5; }
+	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
+	f = fdi.st_size & (~1);
+	if(f > nsize) f = nsize;
+	o = 0;
+	while(((i = read(fd, nmem+o, f - o)) > 0) && o < f) {
+		o += i;
+	}
+	if( i < 0 ) {
+		perror("read");
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	o = 0;
+	if(endian) {
+		while(o < f) {
+			eswp = *(uint16_t*)(nmem+o);
+			*(uint16_t*)(nmem+o) = (eswp >> 8) | (eswp << 8);
+			o += 2;
+		}
+	}
+	fprintf(stderr, "loaded %lu bytes\n", f);
 	return 0;
 }
 

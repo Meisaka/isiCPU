@@ -181,7 +181,7 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit)
 {
-	if(!p || plen < 1 || !code || !limit) return -1;
+	if(!p || plen < 1 || !code) return -1;
 	int found = 0;
 	int flen = 0;
 	uint8_t *uo = (uint8_t*)in;
@@ -195,7 +195,10 @@ int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limi
 			else found = 2;
 			break;
 		case 1:
-			*p = (uint8_t)limit;
+			flen = *p = (uint8_t)limit;
+			if(flen) found += 2;
+			else return 0;
+			break;
 		case 2:
 			flen = *p;
 			if(flen) found += 2;
@@ -239,6 +242,10 @@ int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int lim
 			if(!*p) return 1;
 			break;
 		case 1:
+			flen = *p;
+			if(flen) found += 2;
+			else return 0;
+			break;
 		case 2:
 			flen = *p;
 			if(flen) found += 2;
@@ -622,20 +629,15 @@ int isi_addcpu()
 
 	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
-	uint8_t *rom = 0;
-	uint32_t rsize = 0;
 	if(binf) {
-		if(!loadbinfile(binf, loadendian, &rom, &rsize)) {
-			if(rsize > 0x20000) rsize = 0x20000;
-			uint8_t ist[24];
-			ist[0] = 0;
-			isi_write_parameter(ist, 24, 1, &rsize, sizeof(uint32_t));
-			isi_make_object(isi_lookup_name("rom"), (struct objtype**)&ninfo, ist, 24);
-			memcpy(((char*)ninfo->rvstate)+2, rom, rsize);
-			*((uint16_t*)ninfo->rvstate) = rsize >> 1;
-			isi_attach(bus, ninfo);
-			free(rom);
-		}
+		uint8_t ist[24];
+		ist[0] = 0;
+		uint64_t id = 0;
+		isi_fname_id(binf, &id);
+		isi_write_parameter(ist, 24, 2, &id, sizeof(uint64_t));
+		if(loadendian) isi_write_parameter(ist, 24, 3, &id, 0);
+		isi_make_object(isi_lookup_name("rom"), (struct objtype**)&ninfo, ist, 24);
+		isi_attach(bus, ninfo);
 	}
 	isi_attach((struct isiInfo*)cpu, bus);
 

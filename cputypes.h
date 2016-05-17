@@ -190,9 +190,14 @@ int isi_register(struct isiConstruct *obj);
 int isi_inittable(struct isiDevTable *t);
 
 int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize);
+int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t nsize);
 int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsize);
 int isi_text_dec(const char *text, int len, int limit, void *vv, int olen);
 int isi_disk_getblock(struct isiInfo *disk, void **blockaddr);
+int isi_find_bin(uint64_t diskid, char **nameout);
+size_t isi_fsize(const char *path);
+int isi_fname_id(const char *fname, uint64_t *id);
+int isi_text_dec(const char *text, int len, int limit, void *vv, int olen);
 
 int session_write(struct isiSession *, int len);
 int session_write_msg(struct isiSession *);
