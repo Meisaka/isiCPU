@@ -760,11 +760,6 @@ int handle_newsessions()
 	return 0;
 }
 
-int session_write(struct isiSession *ses, int len)
-{
-	return send(ses->sfd, ses->out, len, 0);
-}
-
 int session_write_msg(struct isiSession *ses)
 {
 	int len;
@@ -773,7 +768,12 @@ int session_write_msg(struct isiSession *ses)
 		len = 1300;
 		*(uint32_t*)(ses->out) = ((*(uint32_t*)ses->out) & 0xfff00000) | len;
 	}
-	return send(ses->sfd, ses->out, 4+len, 0);
+	while(len & 3) {
+		ses->out[4+len] = 0;
+		len++;
+	}
+	(*(uint32_t*)(ses->out+4+len)) = 0xFF8859EA;
+	return send(ses->sfd, ses->out, 8+len, 0);
 }
 
 int session_write_msgex(struct isiSession *ses, void *buf)
@@ -784,7 +784,12 @@ int session_write_msgex(struct isiSession *ses, void *buf)
 		len = 1300;
 		*(uint32_t*)(buf) = ((*(uint32_t*)buf) & 0xfff00000) | len;
 	}
-	return send(ses->sfd, (char*)buf, 4+len, 0);
+	while(len & 3) {
+		((char*)buf)[4+len] = 0;
+		len++;
+	}
+	(*(uint32_t*)(((char*)buf)+4+len)) = 0xFF8859EA;
+	return send(ses->sfd, (char*)buf, 8+len, 0);
 }
 
 int session_write_buf(struct isiSession *ses, void *buf, int len)
@@ -803,8 +808,10 @@ int handle_session_rd(struct isiSession *ses, struct timespec mtime)
 readagain:
 		l = ((*(uint32_t*)ses->in) & 0x1fff);
 		if(l > 1400) l = 1400;
-		if(ses->rcv < 4+l) {
-			i = read(ses->sfd, ses->in+ses->rcv, (4+l)-ses->rcv);
+		if(l & 3) l += 4 - (l & 3);
+		l += 8;
+		if(ses->rcv < l) {
+			i = read(ses->sfd, ses->in+ses->rcv, l - ses->rcv);
 		} else {
 			fprintf(stderr, "net-session: improper read\n");
 		}
@@ -816,16 +823,22 @@ readagain:
 		if(ses->rcv >= 4) {
 			l = ((*(uint32_t*)ses->in) & 0x1fff);
 			if(l > 1400) l = 1400;
-			if(ses->rcv < 4+l) goto readagain;
+			if(l & 3) l += 4 - (l & 3);
+			l += 8;
+			if(ses->rcv < l) goto readagain;
 		}
 	}
 	ses->rcv += i;
-	if(ses->rcv < 4+l) return 0;
+	if(ses->rcv < l) return 0;
 	mc = *(uint32_t*)ses->in;
 	uint32_t *pm = (uint32_t*)ses->in;
 	uint32_t *pr = (uint32_t*)ses->out;
 	l = mc & 0x1fff; mc >>= 20;
 	if(l > 1400) l = 1400;
+	if(*(uint32_t*)(ses->in+l+((l&3)?8-(l&3):4)) != 0xFF8859EA) {
+		fprintf(stderr, "\nnet-session: message framing invalid\n\n");
+		return -1;
+	}
 	/* handle message here */
 	switch(mc) {
 	case ISIM_PING: /* keepalive/ping */
@@ -1236,9 +1249,9 @@ int main(int argc, char**argv, char**envp)
 			memset(&sts, 0, sizeof(struct stats));
 			if(premlimit < 20) premlimit+=10;
 			if(paddlimit < 20) paddlimit+=2;
-			uint32_t pmsg = 0x01000000;
 			for(k = 0; k < allses.count; k++) {
-				write(allses.table[k]->sfd, &pmsg, 4);
+				*((uint32_t*)allses.table[k]->out) = ISIMSG(PING, 0, 0);
+				session_write_msg(allses.table[k]);
 				if(errno == EPIPE) {
 					close(allses.table[k]->sfd);
 					errno = 0;

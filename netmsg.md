@@ -1,20 +1,23 @@
 
-##### Header
+##### Header and Format
  - Little endian integers
  - 32 bit header (message code, flags, length)
  - payload
+ - padding (zeros) to align to 32 bits (only if end of message is not aligned)
+ - end of message word - aligned 32 bit integer: 0xFF8859EA
 
 | message | flags  | length
 |---------|--------|--------
 | 12 bits | 7 bits | 13 bits
+
 ```
 code   = (head >> 20) & 0xfff     ;// ( 12 bits )
 flags  = (head >> 13) & 0x7f      ;// (  7 bits )
 length = (head      ) & 0x1fff    ;// ( 13 bits )
 ```
 
- - length is message length after head.
- - a "packet" is a minimum of a 4 byte head + 0 length message
+ - length is message payload length after head.
+ - a "packet" is a minimum of a 4 byte head + 0 length message + 4 byte tail
 
 ##### Message types
  - (C>S) client to server
