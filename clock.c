@@ -49,7 +49,7 @@ static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 		if(!clk->rate && msg[1]) {
 			info->nrun.tv_sec = crun.tv_sec;
 			info->nrun.tv_nsec = crun.tv_nsec;
-			fprintf(stderr, "Clock Reset\n");
+			isilog(L_DEBUG, "Clock Reset\n");
 			clk->accum = 0;
 		}
 		clk->rate = msg[1];

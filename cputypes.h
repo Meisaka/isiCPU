@@ -173,7 +173,9 @@ void isi_hw_wrmem(isiram16 ram, uint16_t a, uint16_t v);
 
 /* attach dev to item */
 int isi_attach(struct isiInfo *item, struct isiInfo *dev);
-int isi_create_object(int objtype, struct objtype **out);
+int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
+int isi_delete_object(struct objtype *obj);
+int isi_find_obj(uint32_t id, struct objtype **target);
 int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
@@ -182,9 +184,19 @@ uint32_t isi_lookup_name(const char *);
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit);
 int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int limit);
 
+void fetchtime(struct timespec * t);
 void isi_addtime(struct timespec *, size_t nsec);
 int isi_time_lt(struct timespec *, struct timespec *);
 void isi_setrate(struct isiCPUInfo *info, size_t rate);
+
+#define L_DEBUG 5
+#define L_NOTE 4
+#define L_INFO 3
+#define L_WARN 2
+#define L_ERR 1
+#define L_CRIT 0
+void isilogerr(const char * desc);
+void isilog(int level, const char *format, ...);
 
 int isi_register(struct isiConstruct *obj);
 int isi_inittable(struct isiDevTable *t);

@@ -15,6 +15,7 @@ static struct isiSyncTable {
 
 extern struct isiObjTable allobj;
 extern struct isiSessionTable allses;
+int isi_create_object(int objtype, struct objtype **out);
 
 void isi_synctable_init()
 {
@@ -91,7 +92,7 @@ int isi_add_memsync(struct objtype *target, uint32_t base, uint32_t extent, size
 	}
 	ns->rate = rate;
 	if(ns->extents >= 4) return -1;
-	fprintf(stderr, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
+	isilog(L_DEBUG, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
 	ns->base[ns->extents] = base;
 	ns->len[ns->extents] = extent;
 	ns->extents++;
@@ -112,7 +113,7 @@ int isi_add_sync_extent(struct objtype *target, uint32_t base, uint32_t extent)
 		ns->synctype = ISIN_SYNC_MEM;
 	}
 	if(ns->extents >= 4) return -1;
-	fprintf(stderr, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
+	isilog(L_DEBUG, "netsync: adding extent to sync [0x%04x +0x%04x]\n", base, extent);
 	ns->base[ns->extents] = base;
 	ns->len[ns->extents] = extent;
 	ns->extents++;
@@ -135,7 +136,7 @@ int isi_set_sync_extent(struct objtype *target, uint32_t index, uint32_t base, u
 	if(index > 3) return -1;
 	if(index+1 > ns->extents) ns->extents = index+1;
 	if(ns->extents > 4) return -1;
-	fprintf(stderr, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
+	isilog(L_DEBUG, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
 	ns->base[index] = base;
 	ns->len[index] = extent;
 	ns->ctl = 0;
@@ -193,7 +194,7 @@ int isi_add_devmemsync(struct objtype *target, struct objtype *memtarget, size_t
 		ns->synctype = ISIN_SYNC_MEMDEV;
 	}
 	ns->rate = rate;
-	fprintf(stderr, "netsync: adding memdev sync rate=%ld \n", rate);
+	isilog(L_DEBUG, "netsync: adding memdev sync rate=%ld \n", rate);
 	ns->ctl = 0;
 	return 0;
 }
@@ -216,7 +217,7 @@ int isi_set_devmemsync_extent(struct objtype *target, struct objtype *memtarget,
 	if(index+1 > ns->extents) ns->extents = index+1;
 	if(ns->extents > 4) return -1;
 	ns->ctl = 0;
-	fprintf(stderr, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
+	isilog(L_DEBUG, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
 	ns->base[index] = base;
 	ns->len[index] = extent;
 	return ns->extents - 1;
@@ -226,9 +227,9 @@ int isi_remove_sync(struct objtype *target)
 {
 	struct isiNetSync *ns = 0;
 	if(!isi_find_sync(target, &ns)) {
-		fprintf(stderr, "netsync: request to remove non-existent sync\n");
+		isilog(L_DEBUG, "netsync: request to remove non-existent sync\n");
 	}
-	fprintf(stderr, "netsync: TODO remove sync\n");
+	isilog(L_DEBUG, "netsync: TODO remove sync\n");
 	return 0;
 }
 
@@ -263,7 +264,7 @@ void isi_run_sync(struct timespec crun)
 				|| allobj.table[ns->target_index]->id != ns->target.id))
 			{
 				ns->ctl ^= 1;
-				fprintf(stderr, "netsync: invalidated index\n");
+				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
 			if((ns->ctl & 2) && (
 				!ns->memobj.id
@@ -271,7 +272,7 @@ void isi_run_sync(struct timespec crun)
 				|| allobj.table[ns->memobj_index]->id != ns->memobj.id))
 			{
 				ns->ctl &= ~(4|2);
-				fprintf(stderr, "netsync: invalidated index\n");
+				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
 		}
 		switch(ns->synctype) { /* update indexes */
@@ -282,7 +283,7 @@ void isi_run_sync(struct timespec crun)
 				if(x < 0) break;
 				ns->memobj_index = x;
 				ns->ctl |= 2;
-				fprintf(stderr, "netsync: adding mem index %d\n", ns->ctl);
+				isilog(L_DEBUG, "netsync: adding mem index %d\n", ns->ctl);
 			}
 			if((ns->ctl & 2)) mem = (isiram16)allobj.table[ns->memobj_index];
 			if(mem && !(ns->ctl & 4)) {
@@ -312,7 +313,7 @@ void isi_run_sync(struct timespec crun)
 				if(x < 0) break;
 				ns->target_index = x;
 				ns->ctl |= 1;
-				fprintf(stderr, "netsync: adding dev index %d\n", ns->ctl);
+				isilog(L_DEBUG, "netsync: adding dev index %d\n", ns->ctl);
 			}
 			if((ns->ctl & 1)) dev = (struct isiInfo *)allobj.table[ns->target_index];
 			break;
@@ -414,8 +415,8 @@ void isi_debug_dump_synctable()
 {
 	uint32_t i = 0;
 	while(i < allsync.count) {
-		fprintf(stderr, "sync-list: [%08x]: %x\n", allsync.table[i]->id.id, allsync.table[i]->id.objtype);
-		fprintf(stderr, ": rate=%ld\n", allsync.table[i]->rate);
+		isilog(L_DEBUG, "sync-list: [%08x]: %x\n", allsync.table[i]->id.id, allsync.table[i]->id.objtype);
+		isilog(L_DEBUG, ": rate=%ld\n", allsync.table[i]->rate);
 		i++;
 	}
 }

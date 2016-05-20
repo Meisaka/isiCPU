@@ -20,7 +20,7 @@ static int HWM_FreeAll(struct isiInfo *info)
 	if(!info) return -1;
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	if(bus->busdev.table) {
-		fprintf(stderr, "hwm: TODO correct free HW mem\n");
+		isilog(L_DEBUG, "hwm: TODO correct free HW mem\n");
 		free(bus->busdev.table);
 		bus->busdev.table = NULL;
 	}
@@ -36,9 +36,7 @@ static int HWM_DeviceAdd(struct isiInfo *info, struct isiInfo *dev)
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
 	if(!dev) return -1;
 	isi_push_dev(&bus->busdev, dev);
-#if DEBUG_DCPUHW == 1
-	fprintf(stderr, "hwm: adding device c=%d\n", bus->busdev.count);
-#endif
+	isilog(L_DEBUG, "hwm: adding device c=%d n=%s\n", bus->busdev.count, dev->meta->name);
 	return 0;
 }
 
@@ -47,9 +45,7 @@ static int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
 	size_t k;
 	size_t hs;
 	struct isiBusInfo *bus = (struct isiBusInfo*)info;
-#if DEBUG_DCPUHW == 1
-	fprintf(stderr, "hwm: updating attachment c=%d\n", bus->busdev.count);
-#endif
+	isilog(L_DEBUG, "hwm: updating attachments c=%d\n", bus->busdev.count);
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		if(bus->busdev.table[k]) {
@@ -75,14 +71,12 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 	switch(msg[0]) {
 	case 0:
 		msg[1] = (uint16_t)hs;
-		fprintf(stderr, "hwm-reset-all c=%ld\n", hs);
+		isilog(L_DEBUG, "hwm-reset-all c=%ld\n", hs);
 		for(h = 0; h < hs; h++) {
 			dev = bus->busdev.table[h];
 			if(dev->Reset) dev->Reset(dev);
 			if(dev->MsgIn) {
-#if DEBUG_DCPUHW == 1
-				fprintf(stderr, "hwm-reset: %s %ld\n", dev->meta->name, h);
-#endif
+				isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name, h);
 				dev->MsgIn(dev, src, msg, mtime);
 			}
 		}
@@ -90,9 +84,7 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 	case 1:
 	case 2:
 		if(h >= hs) {
-#if DEBUG_DCPUHW == 1
-			fprintf(stderr, "hwm: %ld out of range.\n", h);
-#endif
+			isilog(L_DEBUG, "hwm: %ld out of range.\n", h);
 			break;
 		}
 		dev = bus->busdev.table[h];
@@ -134,9 +126,7 @@ static int HWM_Run(struct isiInfo *info, struct timespec crun)
 static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	if(!info) return -1;
-#if DEBUG_MEM == 1
-	fprintf(stderr, "hwm: init bus\n");
-#endif
+	isilog(L_DEBUG, "hwm: init bus\n");
 	info->RunCycles = HWM_Run;
 	info->MsgIn = HWM_Query;
 	info->Attach = HWM_DeviceAdd;

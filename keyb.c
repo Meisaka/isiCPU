@@ -96,7 +96,7 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 			if(info->hostcpu && info->hostcpu->MsgIn) {
 				info->hostcpu->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
 			} else {
-				fprintf(stderr, "Keyboard Interrupt dropped!\n");
+				isilog(L_DEBUG, "Keyboard Interrupt dropped!\n");
 			}
 		}
 		return 0;

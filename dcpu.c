@@ -280,7 +280,7 @@ static inline void DCPU_reref(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram,pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
-		fprintf(stderr, "DCPU: Bad write: %x\n", p);
+		isilog(L_DEBUG, "DCPU: Bad write: %x\n", p);
 		// Should never actually happen
 		return ;
 	}
@@ -323,7 +323,7 @@ static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
-		fprintf(stderr, "DCPU: Bad write: %x\n", p);
+		isilog(L_DEBUG, "DCPU: Bad write: %x\n", p);
 		// Should never actually happen
 		return;
 	}
@@ -757,10 +757,10 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				break;
 			// Composite operations:
 			case 0x18: // UKN
-				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
+				isilog(L_DEBUG, "DCPU: Invalid op: %x\n", op);
 				break;
 			case 0x19: // UKN
-				fprintf(stderr, "DCPU: Invalid op: (%04x) %x\n", pr->PC, op);
+				isilog(L_DEBUG, "DCPU: Invalid op: (%04x) %x\n", pr->PC, op);
 				break;
 			case OP_ADX: // ADX (R/W)
 				alu2.ui = alu2.u + alu1.u + pr->EX;
@@ -769,10 +769,10 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				alu2.ui = alu2.u - alu1.u + pr->EX;
 				break;
 			case 0x1C: // UKN
-				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
+				isilog(L_DEBUG, "DCPU: Invalid op: %x\n", op);
 				break;
 			case 0x1D: // UKN
-				fprintf(stderr, "DCPU: Invalid op: %x\n", op);
+				isilog(L_DEBUG, "DCPU: Invalid op: %x\n", op);
 				break;
 			case OP_STI: // STI (WO)
 				pr->R[6]++; pr->R[7]++;
@@ -828,7 +828,7 @@ ecpu:
 static int DCPU_setonfire(struct DCPU * pr)
 {
 	pr->MODE = BURNING;
-	fprintf(stderr, "DCPU: set on fire!\n");
+	isilog(L_WARN, "DCPU: set on fire!\n");
 	return HUGE_FIREBALL;
 }
 

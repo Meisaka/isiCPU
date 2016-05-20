@@ -1,15 +1,16 @@
 
+#define _GNU_SOURCE
 #include "cputypes.h"
-
-#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <dirent.h>
 
 int isi_read_disk_file(struct isiDisk *disk);
 int isi_write_disk_file(struct isiDisk *disk);
+int isi_create_object(int objtype, struct objtype **out);
 
 int isi_text_enc(char *text, int limit, void const *vv, int len)
 {
@@ -92,7 +93,7 @@ int isi_fname_id(const char *fname, uint64_t *id)
 		nlen = strlen(fname);
 	}
 	if(isi_text_dec(fname, nlen, 11, &dsk, 8)) {
-		fprintf(stderr, "Bad name\n");
+		isilog(L_WARN, "media name to id: Bad name\n");
 		return -1;
 	}
 	if(id) *id = dsk;
@@ -109,9 +110,9 @@ int isi_scan_dir()
 	char dskname[32];
 
 	d = opendir(".");
-	if(!d) { perror("opendir"); return -1; }
+	if(!d) { isilogerr("opendir"); return -1; }
 	dbuf = (struct dirent*)malloc(offsetof(struct dirent, d_name) + 256);
-	if(!dbuf) { perror("malloc"); closedir(d); return -1; }
+	if(!dbuf) { isilogerr("malloc"); closedir(d); return -1; }
 
 	while(!readdir_r(d, dbuf, &de) && de) {
 		dot = strchr(de->d_name, '.');
@@ -158,9 +159,9 @@ int isi_find_media(uint64_t diskid, char **nameout, const char *ext)
 	int found = 0;
 
 	d = opendir(".");
-	if(!d) { perror("opendir"); return -1; }
+	if(!d) { isilogerr("opendir"); return -1; }
 	dbuf = (struct dirent*)malloc(offsetof(struct dirent, d_name) + 256);
-	if(!dbuf) { perror("malloc"); closedir(d); return -1; }
+	if(!dbuf) { isilogerr("malloc"); closedir(d); return -1; }
 
 	while(!readdir_r(d, dbuf, &de) && de && !found) {
 		dot = strchr(de->d_name, '.');
@@ -247,10 +248,10 @@ int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk)
 	}
 	if(!strcmp(dskname, ldisk)) {
 	}
-	fprintf(stderr, "Openning Disk\n");
+	isilog(L_DEBUG, "Openning Disk\n");
 	fd = open(ldisk, O_RDWR | oflags, 0644);
 	if(fd == -1) {
-		perror("open");
+		isilogerr("open");
 		free(ldisk);
 		return -1;
 	}
@@ -283,7 +284,7 @@ int isi_read_disk_file(struct isiDisk *disk)
 		f += i;
 	}
 	if( i < 0 ) {
-		perror("read");
+		isilogerr("read");
 		return -1;
 	}
 	memcpy(ds->dblock, ds->block, sizeof(ds->block));
@@ -301,7 +302,7 @@ int isi_write_disk_file(struct isiDisk *disk)
 		f += i;
 	}
 	if( i < 0 ) {
-		perror("write");
+		isilogerr("write");
 		return -1;
 	}
 	return 0;
@@ -310,7 +311,7 @@ int isi_write_disk_file(struct isiDisk *disk)
 size_t isi_fsize(const char *path)
 {
 	struct stat fdi;
-	if(stat(path, &fdi)) { perror("stat"); return 0; }
+	if(stat(path, &fdi)) { isilogerr("stat"); return 0; }
 	return fdi.st_size;
 }
 
@@ -322,8 +323,8 @@ int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t ns
 	uint16_t eswp;
 	if(!nmem) { return -5; }
 	fd = open(path, O_RDONLY);
-	if(fd < 0) { perror("open"); return -5; }
-	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
+	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	f = fdi.st_size & (~1);
 	if(f > nsize) f = nsize;
 	o = 0;
@@ -331,7 +332,7 @@ int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t ns
 		o += i;
 	}
 	if( i < 0 ) {
-		perror("read");
+		isilogerr("read");
 		close(fd);
 		return -1;
 	}
@@ -344,7 +345,7 @@ int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t ns
 			o += 2;
 		}
 	}
-	fprintf(stderr, "loaded %lu bytes\n", f);
+	isilog(L_DEBUG, "loaded %lu bytes\n", f);
 	return 0;
 }
 
@@ -356,8 +357,8 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 	uint16_t eswp;
 	uint8_t *mem;
 	fd = open(path, O_RDONLY);
-	if(fd < 0) { perror("open"); return -5; }
-	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
+	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	f = fdi.st_size & (~1);
 	mem = (uint8_t*)malloc(f);
 	if(!mem) { close(fd); return -5; }
@@ -366,7 +367,7 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 		o += i;
 	}
 	if( i < 0 ) {
-		perror("read");
+		isilogerr("read");
 		close(fd);
 		return -1;
 	}
@@ -381,7 +382,7 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 		}
 	}
 	*nmem = mem;
-	fprintf(stderr, "loaded %lu bytes\n", f);
+	isilog(L_DEBUG, "loaded %lu bytes\n", f);
 	if(nsize) *nsize = f;
 	return 0;
 }
@@ -394,8 +395,8 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 	uint16_t eswp;
 	uint8_t *mem;
 	fd = open(path, O_RDWR);
-	if(fd < 0) { perror("open"); return -5; }
-	if(fstat(fd, &fdi)) { perror("fstat"); close(fd); return -3; }
+	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	if(endian) {
 		mem = (uint8_t*)malloc(nsize);
 		if(!mem) { close(fd); return -5; }
@@ -413,12 +414,12 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 	}
 	if(endian) free(mem);
 	if( i < 0 ) {
-		perror("write");
+		isilogerr("write");
 		close(fd);
 		return -1;
 	}
 	close(fd);
-	fprintf(stderr, "wrote %lu bytes\n", o);
+	isilog(L_DEBUG, "wrote %lu bytes\n", o);
 	return 0;
 }
 

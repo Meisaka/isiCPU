@@ -101,12 +101,12 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 		break;
 	case 1: // Map Font
 		dsp->fontmem = msg[1];
-		fprintf(stderr, "NYALEM: Font set to %04x \n", dsp->fontmem);
+		isilog(L_DEBUG, "NYALEM: Font set to %04x \n", dsp->fontmem);
 		isi_set_devmemsync_extent(&info->id, &mem->id, 1, dsp->fontmem, 256);
 		break;
 	case 2: // Map Palette
 		dsp->palmem = msg[1];
-		fprintf(stderr, "NYALEM: Palette set to %04x \n", dsp->palmem);
+		isilog(L_DEBUG, "NYALEM: Palette set to %04x \n", dsp->palmem);
 		isi_set_devmemsync_extent(&info->id, &mem->id, 2, dsp->palmem, 16);
 		break;
 	case 3: // Set border

@@ -1,9 +1,6 @@
 CC=gcc -g 
 CFLAGS += -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
 
-# required in GNU/Linux for asprintf
-CFLAGS += -D_GNU_SOURCE
-
 cctest : CC=g++ -g
 cctest : CFLAGS=-O2 -Wall -D_POSIX_C_SOURCE=200809L
 
