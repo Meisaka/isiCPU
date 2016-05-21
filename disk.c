@@ -118,15 +118,15 @@ int isi_scan_dir()
 		dot = strchr(de->d_name, '.');
 		if(dot) {
 			if(!strncmp(dot+1, "idi", 3) || !strncmp(dot+1, "bin", 3)) {
-				fprintf(stderr, "ENT-%s ", de->d_name);
+				isilog(L_DEBUG, "ENT-%s ", de->d_name);
 				dsk = 0;
 				if(isi_text_dec(de->d_name, dot - de->d_name, 11, &dsk, 8)) {
-					fprintf(stderr, "Bad name ");
+					isilog(L_DEBUG, "Bad name ");
 				}
 				isi_text_enc(dskname, 11, &dsk, 8);
 				int f = 13 - (dot - de->d_name);
 				for(int i = 0; i < f; i++) putc(' ', stderr);
-				fprintf(stderr, "ID:%016lx N:%s\n", dsk, dskname);
+				isilog(L_DEBUG, "ID:%016lx N:%s\n", dsk, dskname);
 			}
 		}
 	}
@@ -400,6 +400,7 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 	if(endian) {
 		mem = (uint8_t*)malloc(nsize);
 		if(!mem) { close(fd); return -5; }
+		o = 0;
 		while(o < nsize) {
 			eswp = *(uint16_t*)(mem+o);
 			*(uint16_t*)(mem+o) = (eswp >> 8) | (eswp << 8);
@@ -409,6 +410,7 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 		mem = nmem;
 	}
 	o = 0;
+	i = 0;
 	while(o < nsize && ((i = write(fd, nmem+o, nsize-o)) > 0)) {
 		o += i;
 	}

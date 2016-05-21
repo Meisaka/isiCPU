@@ -7,6 +7,8 @@
 #include <stdarg.h>
 #include <time.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <poll.h>
 #include <netinet/ip.h>
@@ -31,6 +33,7 @@ static char * diskf = 0;
 static int listenportnumber = 58704;
 
 int fdlisten = -1;
+int fdlog = STDERR_FILENO;
 
 static const int quantum = 1000000000 / 10000; // ns
 
@@ -63,18 +66,18 @@ void showdisasm_dcpu(const struct isiInfo *info);
 void showdiag_dcpu(const struct isiInfo* info, int fmt);
 
 static const char * const gsc_usage =
-"Usage:\n%s [-Desrm] [-p <portnum>] [-B <binfile>]\n%s -E <file>\n"
+"Usage:\n%s [-Desr] [-p <portnum>] [-B <binid>] [-d <diskid>]\n%s -E <file>\n"
 "Options:\n"
-" -e  Assume <binfile> is little-endian\n"
-" -s  Enable server and wait for connection before\n"
-"     starting emulation. (Valid with -r)\n"
+" -e  Assume file pointed to by <binid> is little-endian\n"
+" -s  Enable server, if specified without -r then fork to background.\n"
 " -p <portnum>  Listen on <portnum> instead of the default (valid with -s)\n"
-" -r  Run a DCPU emulation (interactively).\n"
-" -m  Emulate multiple DCPUs (test mode)\n"
+" -r  Run interactively.\n"
 " -D  Enable debugging and single stepping DCPU\n"
-" -B <binfile>  Load <binfile> into DCPU memory starting at 0x0000.\n"
+" -B <binid>  Load file with <binid> into DCPU memory starting at 0x0000.\n"
 "      File is assmued to contain 16 bit words, 2 octets each in big-endian\n"
 "      Use the -e option to load little-endian files.\n"
+" -d <diskid>  Load disk with <diskid> into the default floppy drive.\n"
+" -l  List file IDs then exit.\n"
 " -E <file>  Flip the bytes in each 16 bit word of <file> then exit.\n";
 
 #define ISILOGBUFFER 4096
@@ -84,7 +87,7 @@ void isilogerr(const char * desc)
 	int r;
 	r = snprintf(logwrout, ISILOGBUFFER, "Error: %s: %s", desc, strerror(errno));
 	if(r > 0) {
-		write(2, logwrout, r);
+		write(fdlog, logwrout, r);
 	}
 }
 
@@ -98,22 +101,32 @@ void isilog(int level, const char *format, ...)
 		va_end(vl);
 		return;
 	}
-	write(2, logwrout, r);
+	write(fdlog, logwrout, r);
 	va_end(vl);
 }
 
 void sysfaulthdl(int ssn) {
-	if(ssn == SIGINT) {
+	switch(ssn) {
+	case SIGTERM:
+		isilog(L_CRIT, "SHUTTING DOWN ON SIGTERM!\n");
+		exit(4);
+	case SIGINT:
 		if(haltnow) {
 			isilog(L_CRIT, "FORCED ABORT!\n");
 			exit(4);
 		}
 		haltnow = 1;
 		isilog(L_ERR, "SIGNAL CAUGHT!\n");
-	} else if(ssn == SIGPIPE) {
+		break;
+	case SIGHUP:
+		isilog(L_WARN, "HUP RECEIVED\n");
+		break;
+	case SIGPIPE:
 		isilog(L_WARN, "SOCKET SIGNALED!\n");
-	} else {
+		break;
+	default:
 		isilog(L_ERR, "Unknown signal\n");
+		break;
 	}
 }
 
@@ -688,10 +701,6 @@ static int parse_args(int argc, char**argv)
 				case 'r':
 					rqrun = 1;
 					break;
-				case 'm':
-					softcpumax = CPUSMAX;
-					softcpumin = CPUSMIN;
-					break;
 				case 'l':
 					isi_scan_dir();
 					break;
@@ -744,6 +753,47 @@ static int parse_args(int argc, char**argv)
 	return 0;
 }
 
+void open_log()
+{
+	int lf;
+	if( (lf = open("/var/log/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+		fdlog = lf;
+	} else if( (lf = open("/var/lib/isicpu/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+		fdlog = lf;
+	} else if( (lf = open("isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+		fdlog = lf;
+		isilog(L_WARN, "local dir log file\n");
+	} else fdlog = -1;
+}
+
+void enter_service()
+{
+	pid_t pid, sid;
+	pid = fork();
+	if(pid < 0) {
+		isilogerr("fork");
+		exit(1);
+	}
+	if(pid > 0) {
+		isilog(L_INFO, "entering service\n");
+		exit(0);
+	}
+	umask(0);
+	open_log();
+	/*
+	if( (chdir("/")) < 0 ) {
+		isilogerr("chdir");
+	}*/
+	sid = setsid();
+	if(sid < 0) {
+		isilogerr("setsid");
+		exit(1);
+	}
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+}
+
 int main(int argc, char**argv, char**envp)
 {
 	uint32_t cux;
@@ -794,10 +844,13 @@ int main(int argc, char**argv, char**envp)
 		isi_addcpu();
 	}
 	if(flagsvr) {
+		if(!rqrun) enter_service();
 		makeserver(listenportnumber);
 	}
 
 	sigaction(SIGINT, &hnler, NULL);
+	sigaction(SIGTERM, &hnler, NULL);
+	sigaction(SIGHUP, &hnler, NULL);
 	sigaction(SIGPIPE, &hnler, NULL);
 
 	fetchtime(&LTUTime);
@@ -936,7 +989,7 @@ int main(int argc, char**argv, char**envp)
 				case POLLNVAL: etxt = "poll: FD invalid\n"; goto sessionerror;
 				default:
 					if(allses.ptable[k].revents & POLLIN) {
-						if(allses.ptable[k].fd == 0) {
+						if(rqrun && allses.ptable[k].fd == 0) {
 							handle_stdin();
 						} else if(allses.ptable[k].fd == fdlisten) {
 							handle_newsessions();
