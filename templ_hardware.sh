@@ -23,8 +23,8 @@ int ${NAME}_SIZE(int t, const char *cfg)
 	if(t == 1) return sizeof(struct ${NAME}_svstate);
 	return 0;
 }
-int ${NAME}_Init(struct isiInfo *info, const uint8_t *cfg);
-/* int ${NAME}_PreInit(struct isiInfo *info, const uint8_t *cfg); */
+static int ${NAME}_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+/* static int ${NAME}_PreInit(struct isiInfo *info, const uint8_t *cfg, size_t lcfg); */
 struct isidcpudev ${NAME}_Meta = {0x0000,0x00000000,MF_ECIV};
 struct isiConstruct ${NAME}_Con = {
 	0x5000, "${NAME}", "Default_Template_for_${NAME}",
@@ -84,7 +84,7 @@ static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *ms
 	return 1;
 }
 
-int ${NAME}_Init(struct isiInfo *info, const char *cfg)
+static int ${NAME}_Init(struct isiInfo *info, const char *cfg)
 {
 	info->Reset = ${NAME}_Reset; /* power on reset */
 	info->MsgIn = ${NAME}_MsgIn; /* message from CPU or network */

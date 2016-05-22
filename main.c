@@ -618,14 +618,24 @@ int isi_addcpu()
 		isi_create_disk(dsk, &ndsk);
 		isi_attach(ninfo, ndsk);
 	}
+	isi_make_object(isi_lookup_name("imva"), (struct objtype**)&ninfo, 0, 0);
+	isi_attach(bus, ninfo);
 
 	return 0;
+}
+
+void isi_debug_dump_objtable()
+{
+	uint32_t u = 0;
+	while(u < allobj.count) {
+		fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u]->id, allobj.table[u]->objtype);
+		u++;
+	}
 }
 
 void handle_stdin()
 {
 	int i;
-	uint32_t u;
 	char cc;
 	char ccv[10];
 	i = read(0, &cc, 1);
@@ -671,11 +681,7 @@ void handle_stdin()
 		break;
 	case 'l':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
-		u = 0;
-		while(u < allobj.count) {
-			fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u]->id, allobj.table[u]->objtype);
-			u++;
-		}
+		isi_debug_dump_objtable();
 		break;
 	default:
 		break;

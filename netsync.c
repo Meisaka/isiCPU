@@ -246,6 +246,12 @@ int isi_find_obj_index(struct objtype *target)
 	return -1;
 }
 
+#define NSY_OBJ 1
+#define NSY_MEM 2
+#define NSY_MEMVALID 4
+#define NSY_SYNCOBJ 8
+#define NSY_SYNCMEM 16
+
 void isi_run_sync(struct timespec crun)
 {
 	size_t i, k;
@@ -253,40 +259,52 @@ void isi_run_sync(struct timespec crun)
 	for(i = 0; i < allsync.count; i++) {
 		struct isiNetSync *ns = allsync.table[i];
 		struct memory64x16 *mem = 0;
-		struct isiInfo *dev = 0;
 		if(!ns) continue;
-		if(!isi_time_lt(&ns->nrun, &crun))
-			continue;
 		if(ns->ctl) { /* check cache indexes */
-			if((ns->ctl & 1) && (
+			if((ns->ctl & NSY_OBJ) && (
 				!ns->target.id
 				|| !allobj.table[ns->target_index]
 				|| allobj.table[ns->target_index]->id != ns->target.id))
 			{
-				ns->ctl ^= 1;
+				ns->ctl ^= NSY_OBJ;
 				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
-			if((ns->ctl & 2) && (
+			if((ns->ctl & NSY_MEM) && (
 				!ns->memobj.id
 				|| !allobj.table[ns->memobj_index]
 				|| allobj.table[ns->memobj_index]->id != ns->memobj.id))
 			{
-				ns->ctl &= ~(4|2);
+				ns->ctl &= ~(NSY_MEMVALID|NSY_MEM|NSY_SYNCMEM);
 				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
 		}
+		if((ns->ctl & NSY_MEM)) {
+			mem = (isiram16)allobj.table[ns->memobj_index];
+			if(mem->info & ISI_RAMINFO_SCAN) ns->ctl |= NSY_SYNCMEM;
+		}
+	}
+	for(i = 0; i < allsync.count; i++) {
+		struct isiNetSync *ns = allsync.table[i];
+		struct memory64x16 *mem = 0;
+		struct isiInfo *dev = 0;
+		if(!ns) continue;
+		if(!isi_time_lt(&ns->nrun, &crun))
+			continue;
 		switch(ns->synctype) { /* update indexes */
 		case ISIN_SYNC_MEM:
 		case ISIN_SYNC_MEMDEV:
-			if(!(ns->ctl & 2)) {
+			if(!(ns->ctl & NSY_MEM)) {
 				x = isi_find_obj_index(&ns->memobj);
 				if(x < 0) break;
 				ns->memobj_index = x;
-				ns->ctl |= 2;
+				ns->ctl |= NSY_MEM;
 				isilog(L_DEBUG, "netsync: adding mem index %d\n", ns->ctl);
 			}
-			if((ns->ctl & 2)) mem = (isiram16)allobj.table[ns->memobj_index];
-			if(mem && !(ns->ctl & 4)) {
+			if((ns->ctl & NSY_MEM)) {
+				mem = (isiram16)allobj.table[ns->memobj_index];
+				if(mem->info & ISI_RAMINFO_SCAN) mem->info ^= ISI_RAMINFO_SCAN;
+			}
+			if(mem && !(ns->ctl & NSY_MEMVALID)) {
 				uint32_t mask = 0xffff;
 				uint32_t addr;
 				uint32_t alen;
@@ -297,31 +315,32 @@ void isi_run_sync(struct timespec crun)
 					alen = ns->len[ex];
 					for(z = 0; z < alen; z++) {
 						idx = (addr+z) & mask;
+						if(idx > 0x10000) { isilog(L_ERR, "sync: over clear\n"); }
 						mem->ctl[idx] &= 0xffff0000;
 						mem->ctl[idx] |= (ISI_RAMCTL_DELTA|ISI_RAMCTL_SYNC) | ((~mem->ram[idx]) & 0xffff);
 					}
 				}
 				mem->info |= ISI_RAMINFO_SCAN;
-				ns->ctl |= 4;
+				ns->ctl |= NSY_MEMVALID;
 			}
 			if(ns->synctype != ISIN_SYNC_MEMDEV) break;
 		case ISIN_SYNC_DEVR:
 		case ISIN_SYNC_DEVV:
 		case ISIN_SYNC_DEVRV:
-			if(!(ns->ctl & 1)) {
+			if(!(ns->ctl & NSY_OBJ)) {
 				x = isi_find_obj_index(&ns->target);
 				if(x < 0) break;
 				ns->target_index = x;
-				ns->ctl |= 1;
+				ns->ctl |= NSY_OBJ;
 				isilog(L_DEBUG, "netsync: adding dev index %d\n", ns->ctl);
 			}
-			if((ns->ctl & 1)) dev = (struct isiInfo *)allobj.table[ns->target_index];
+			if((ns->ctl & NSY_OBJ)) dev = (struct isiInfo *)allobj.table[ns->target_index];
 			break;
 		}
 		switch(ns->synctype) {
 		case ISIN_SYNC_MEM:
 		case ISIN_SYNC_MEMDEV:
-			if((ns->ctl & 4) && (mem->info & ISI_RAMINFO_SCAN) ) {
+			if((ns->ctl & NSY_MEMVALID) && (ns->ctl & NSY_SYNCMEM)) {
 				uint32_t mask = 0xffff;
 				uint32_t addr;
 				uint32_t alen;
@@ -329,28 +348,39 @@ void isi_run_sync(struct timespec crun)
 				int ex, z;
 				uint32_t sta = 0;
 				uint32_t sln = 0;
+				uint32_t ndln = 0;
+				int fsync = 1;
 				uint16_t *mw = (uint16_t*)(allsync.out);
 				for(ex = ns->extents; ex--; ) {
 					addr = ns->base[ex];
 					alen = ns->len[ex];
 					sta = 0;
 					sln = 0;
+					ndln = 0;
 					for(z = 0; z < alen; z++) {
 						idx = (addr+z) & mask;
+						if(sln) sln++;
 						if(((mem->ram[idx] & 0xffff) ^ (mem->ctl[idx] & 0xffff))) {
 
 							if(!sln) {
-								sta = (addr+z);
+								sta = idx;
 								sln = 1;
 							}
-							if(sln) sln = 1+(addr+z)-sta; 
+							ndln = 0;
 							mem->ctl[idx] &= 0xfffe0000;
 							mem->ctl[idx] |= (mem->ram[idx] & 0xffffu);
+						} else {
+							if(sln) ndln++;
+						}
+						if(ndln > 8 || sln >= 640) {
+							fsync = 0;
+							break;
 						}
 					}
 					if(sln) {
 						*(uint32_t*)(allsync.out+4) = mem->id.id;
 						*(uint32_t*)(allsync.out+8) = sta << 1;
+						if(sln > 640) { isilog(L_ERR, "sync: over scan %d\n", sln); }
 						for(z = 0; z < sln; z++) {
 							mw[6+z] = mem->ram[(sta+z)&mask] & 0xffff;
 						}
@@ -363,14 +393,17 @@ void isi_run_sync(struct timespec crun)
 						}
 					}
 				}
-				mem->info ^= 1;
+				if(fsync) {
+					ns->ctl &= ~NSY_SYNCMEM;
+				}
 			}
-			if((ns->ctl & 1) && !(ns->ctl & 8)) {
-				ns->ctl |= 8;
+			if((ns->ctl & NSY_OBJ) && !(ns->ctl & NSY_SYNCOBJ)) {
+				ns->ctl |= NSY_SYNCOBJ;
 				struct isiReflection *rfl;
 				if(dev->rvproto) {
 					rfl = dev->rvproto;
 					*(uint32_t*)(allsync.out+4) = dev->id.id;
+					if(rfl->length > 1300) { isilog(L_ERR, "sync: over write rv\n"); }
 					memcpy(allsync.out+8, dev->rvstate, rfl->length);
 					*(uint32_t*)(allsync.out) = ISIMSG(SYNCRVS, 0, 4+(rfl->length));
 					for(k = 0; k < allses.count; k++) {
@@ -383,6 +416,7 @@ void isi_run_sync(struct timespec crun)
 				if(dev->svproto) {
 					rfl = dev->svproto;
 					*(uint32_t*)(allsync.out+4) = dev->id.id;
+					if(rfl->length > 1300) { isilog(L_ERR, "sync: over write sv\n"); }
 					memcpy(allsync.out+8, dev->svstate, rfl->length);
 					*(uint32_t*)(allsync.out) = ISIMSG(SYNCSVS, 0, 4+(rfl->length));
 					for(k = 0; k < allses.count; k++) {

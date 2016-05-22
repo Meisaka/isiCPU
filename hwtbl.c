@@ -12,6 +12,7 @@ void Clock_Register();
 void Nya_LEM_Register();
 void Disk_M35FD_Register();
 void EEROM_Register();
+void imva_Register();
 
 void isi_register_objects()
 {
@@ -23,5 +24,6 @@ void isi_register_objects()
 	Nya_LEM_Register();
 	Disk_M35FD_Register();
 	EEROM_Register();
+	imva_Register();
 }
 

@@ -1,21 +1,43 @@
 
-#include <stdint.h>
+#include "dcpuhw.h"
 
-struct imva_nvstate {
+struct imva_rvstate {
 	uint16_t base; /* hw spec */
 	uint16_t ovbase; /* hw spec */
 	uint16_t ovoffset; /* hw spec */
 	uint16_t colors; /* hw spec */
 	uint16_t ovmode; /* hw spec */
-	int blink; /* bool blink state  */
-	uint32_t fgcolor;
-	uint32_t bgcolor;
+	/* int blink; */ /* bool blink state  */
+	/* uint32_t fgcolor; */
+	/* uint32_t bgcolor; */
 };
+ISIREFLECT(struct imva_rvstate,
+	ISIR(imva_rvstate, uint16_t, base)
+	ISIR(imva_rvstate, uint16_t, ovbase)
+	ISIR(imva_rvstate, uint16_t, ovoffset)
+	ISIR(imva_rvstate, uint16_t, colors)
+	ISIR(imva_rvstate, uint16_t, ovmode)
+)
+
+static int imva_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+struct isidcpudev imva_Meta = {0x0538,0x75FEA113,0x59EA5742};
+struct isiConstruct imva_Con = {
+	0x5000, "imva", "IMVA Display",
+	NULL, imva_Init, NULL,
+	&ISIREFNAME(struct imva_rvstate), NULL,
+	&imva_Meta
+};
+void imva_Register()
+{
+	isi_register(&imva_Con);
+}
 
 /* how we access memory */
 #define IMVA_RD(m,a)  (m[a])
 
-static void imva_colors(struct imva_nvstate *imva)
+#if 0
+/******* client size only ********/
+static void imva_colors(struct imva_rvstate *imva)
 {
 	uint8_t r,g,b,c;
 	uint32_t fg, bg;
@@ -32,47 +54,80 @@ static void imva_colors(struct imva_nvstate *imva)
 	imva->fgcolor = fg;
 	imva->bgcolor = bg;
 }
+#endif
 
-void imva_reset(struct imva_nvstate *imva)
+int imva_reset(struct isiInfo *info)
 {
+	struct imva_rvstate *imva = (struct imva_rvstate *)info->rvstate;
 	imva->base = 0;
 	imva->ovbase = 0;
 	imva->colors = 0x0fff;
+	imva->ovoffset = 0;
 	imva->ovmode = 0;
+	return 0;
 }
 
 /* msg is assumed to point at registers A-J in order */
-void imva_interrupt(struct imva_nvstate *imva, uint16_t *msg)
+int imva_interrupt(struct isiInfo *info, uint16_t *msg)
 {
+	struct imva_rvstate *imva = (struct imva_rvstate *)info->rvstate;
+	struct memory64x16 *mem = (struct memory64x16*)info->mem;
 	switch(msg[0]) {
 	case 0:
 		imva->base = msg[1];
+		if(imva->base) {
+			isi_add_devmemsync(&info->id, &mem->id, 50000000);
+			isi_set_devmemsync_extent(&info->id, &mem->id, 0, imva->base, 4000);
+		}
 		break;
 	case 1:
 		imva->ovbase = msg[1];
 		imva->ovoffset = msg[2];
+		isi_set_devmemsync_extent(&info->id, &mem->id, 1, imva->ovbase, 16);
 		break;
 	case 2:
 		if(msg[1] != imva->colors) {
 			imva->colors = msg[1];
-			imva_colors(imva);
 		}
 		imva->ovmode = msg[2];
+		isi_resync_dev(&info->id);
 		break;
 	case 0x0ffff:
-		imva_reset(imva);
+		imva_reset(info);
+		isi_resync_dev(&info->id);
 		break;
 	default:
 		break;
 	}
+	return 0;
 }
 
+static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
+{
+	switch(msg[0]) {
+	case 0: return imva_reset(info);
+	case 1: return 0;
+	case 2: return imva_interrupt(info, msg+2);
+	default: break;
+	}
+	return 0;
+}
+
+static int imva_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
+{
+	info->MsgIn = imva_MsgIn;
+	info->Reset = imva_reset;
+	return 0;
+}
+
+#if 0
+/******* client size only ********/
 /* imva is the device state
  * ram is the entire 64k words
  * rgba is a 320x200 RGBA pixel array (256000 bytes minimum)
  * slack is extra pixels to move to next line (0 if exactly sized buffer)
  */
-int imva_raster(struct imva_nvstate *imva, uint16_t *ram, uint32_t *rgba, uint32_t slack)
+int imva_raster(struct imva_rvstate *imva, uint16_t *ram, uint32_t *rgba, uint32_t slack)
 {
 	uint32_t bg, fg;
 	uint16_t raddr, ova, ovo, ove;
@@ -123,4 +178,5 @@ int imva_raster(struct imva_nvstate *imva, uint16_t *ram, uint32_t *rgba, uint32
 	}
 	return 1;
 }
+#endif
 
