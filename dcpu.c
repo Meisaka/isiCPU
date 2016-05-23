@@ -134,6 +134,8 @@ static int DCPU_reset(struct isiInfo *info)
 	{
 		pr->R[i] = 0;
 	}
+	if(pr->memptr)
+		for(i = 0; i < 0x10000; i++) isi_cpu_wrmem(pr->memptr, (uint16_t)i, 0);
 	pr->PC = 0;
 	pr->EX = 0;
 	pr->SP = 0;

@@ -22,6 +22,7 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 ##### Message types
  - (C>S) client to server
  - (S>C) server to client
+ - (R>C) server response to client (solicited)
  - (S>S) server to server
 
 ##### Messages
@@ -41,21 +42,21 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x025 |     4 |    4 |   C>S    | recursive deactivate<br>`uint32 id`
 | 0x026 |    16 |   16 |   C>S    | attach with bus insert object B to A<br>`uint32 id_A`<br>`uint32 id_B`<br>`int32 at_A`<br>`int32 at_B`
 | 0x080 |     6 | 1300 |   Any    | send object message<br>`uint32 id`<br>`uint16 msg[ (len - 4) | 2 ]`
-| 0x0E0 |     6 | 1300 | S>C, S>S | sync memory address 16<br>`uint32 id`<br>`uint16 baseindex`<br>`uint8 data[ (len - 6) ]`
-| 0x0E1 |     8 | 1300 | S>C, S>S | sync memory address 32<br>`uint32 id`<br>`uint32 baseindex`<br>`uint32 data[ (len | 8) ]`
+| 0x0E0 |     6 | 1300 | S>C, S>S | sync memory a16<br>`uint32 id`<br>`{`<br>`uint16 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
+| 0x0E1 |     8 | 1300 | S>C, S>S | sync memory a32<br>`uint32 id`<br>`{`<br>`uint32 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
 | 0x0E2 |     4 | 1300 | S>C, S>S | sync run volitile state <br>`uint32 id`<br> `uint8 data[len - 4]`
 | 0x0E3 |     4 | 1300 | S>C, S>S | sync session volitile state <br>`uint32 id`<br>`uint8 data[len - 4]`
-| 0x200 |  1300 | 1300 |   S>C    | response accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent with long list or continuation
-| 0x201 |     0 | 1300 |   S>C    | last response accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent at/with end of list
-| 0x213 |  1300 | 1300 |   S>C    | response classes <br>`{ uint32 id; uint32 flags; cstring name; cstring desc; }[*]` | sent with long list or continuation
-| 0x313 |     0 | 1300 |   S>C    | last response classes<br>(same struct as response classes) | sent at/with end of list
-| 0x214 |  1300 | 1300 |   S>C    | response heirarchy <br>`{ uint32 id; uint32 down_id; uint32 up_id; uint32 mem_id; }[len / 16]` | sent with long list or continuation
-| 0x314 |     0 | 1300 |   S>C    | last response heirarchy<br>(same struct as response heirarchy) | sent at/with end of list
-| 0x220 |     8 |   12 |   S>C    | object created<br>`uint32 id`<br>`uint32 classid`<br>`int32 err (creating session only)`
-| 0x221 |     4 |    4 |   S>C    | object deleted<br>`uint32 id`
-| 0x222 |     8 |    8 |   S>C    | object attach response<br>`uint32 id`<br>`int32 err`
-| 0x224 |     4 |    8 |   S>C    | object heirarchy started or reset<br>`uint32 id`<br>`int32 err (initiating session only)`
-| 0x225 |     4 |    8 |   S>C    | object heirarchy stopped<br>`uint32 id`<br>`int32 err (initiating session only)`
+| 0x200 |  1300 | 1300 |   R>C    | list accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent with long list or continuation
+| 0x201 |     0 | 1300 |   R>C    | last of list accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent at/with end of list
+| 0x213 |  1300 | 1300 |   R>C    | list classes <br>`{ uint32 id; uint32 flags; cstring name; cstring desc; }[*]` | sent with long list or continuation
+| 0x313 |     0 | 1300 |   R>C    | last of list classes<br>(same struct as response classes) | sent at/with end of list
+| 0x214 |  1300 | 1300 |   R>C    | list heirarchy <br>`{ uint32 id; uint32 down_id; uint32 up_id; uint32 mem_id; }[len / 16]` | sent with long list or continuation
+| 0x314 |     0 | 1300 |   R>C    | last of list heirarchy<br>(same struct as response heirarchy) | sent at/with end of list
+| 0x220 |     8 |   12 | S>C, R>C | object created<br>`uint32 id`<br>`uint32 classid`<br>`int32 err (creating session only)`
+| 0x221 |     4 |    4 | S>C, R>C | object deleted<br>`uint32 id`
+| 0x222 |     8 |    8 |   R>C    | object attach<br>`uint32 id`<br>`int32 err`
+| 0x224 |     4 |    8 | S>C, R>C | object heirarchy started or reset<br>`uint32 id`<br>`int32 err (initiating session only)`
+| 0x225 |     4 |    8 | S>C, R>C | object heirarchy stopped<br>`uint32 id`<br>`int32 err (initiating session only)`
 
 ##### Parameter Lists
  - A "Parameter" list is a list of tagged, variable sized arguments.

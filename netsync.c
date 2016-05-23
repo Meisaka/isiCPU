@@ -350,41 +350,62 @@ void isi_run_sync(struct timespec crun)
 				uint32_t sln = 0;
 				uint32_t ndln = 0;
 				int fsync = 1;
-				uint16_t *mw = (uint16_t*)(allsync.out);
 				for(ex = ns->extents; ex--; ) {
 					addr = ns->base[ex];
 					alen = ns->len[ex];
 					sta = 0;
 					sln = 0;
 					ndln = 0;
+					*(uint32_t*)(allsync.out+4) = mem->id.id;
+					uint8_t *wlo = allsync.out+8;
+					uint32_t tln = 0;
+					uint16_t *mw = (uint16_t*)(allsync.out+14);
 					for(z = 0; z < alen; z++) {
 						idx = (addr+z) & mask;
-						if(sln) sln++;
+						if(sln) {
+							sln+=2;
+							*mw = mem->ram[idx] & 0xffff;
+							mw++; tln+=2;
+						}
 						if(((mem->ram[idx] & 0xffff) ^ (mem->ctl[idx] & 0xffff))) {
-
 							if(!sln) {
-								sta = idx;
-								sln = 1;
+								sta = idx << 1;
+								sln = 2;
+								mw = (uint16_t*)(wlo+6);
+								*mw = mem->ram[idx] & 0xffff;
+								mw++; tln+=8;
 							}
 							ndln = 0;
 							mem->ctl[idx] &= 0xfffe0000;
 							mem->ctl[idx] |= (mem->ram[idx] & 0xffffu);
 						} else {
-							if(sln) ndln++;
+							if(sln) ndln+=2;
 						}
-						if(ndln > 8 || sln >= 640) {
-							fsync = 0;
-							break;
+						if(tln >= 1290 || ndln > 12 || sln >= 1200) {
+							wlo[0] = (uint8_t)(sta);
+							wlo[1] = (uint8_t)(sta>>8);
+							wlo[2] = (uint8_t)(sta>>16);
+							wlo[3] = (uint8_t)(sta>>24);
+							wlo[4] = (uint8_t)(sln);
+							wlo[5] = (uint8_t)(sln >> 8);
+							wlo = (uint8_t*)mw;
+							ndln = sln = sta = 0;
+							if(tln >= 1290) {
+								fsync = 0;
+								break;
+							}
 						}
 					}
 					if(sln) {
-						*(uint32_t*)(allsync.out+4) = mem->id.id;
-						*(uint32_t*)(allsync.out+8) = sta << 1;
-						if(sln > 640) { isilog(L_ERR, "sync: over scan %d\n", sln); }
-						for(z = 0; z < sln; z++) {
-							mw[6+z] = mem->ram[(sta+z)&mask] & 0xffff;
-						}
-						*(uint32_t*)(allsync.out) = ISIMSG(SYNCMEM32, 0, 8+(sln<<1));
+						wlo[0] = (uint8_t)(sta);
+						wlo[1] = (uint8_t)(sta>>8);
+						wlo[2] = (uint8_t)(sta>>16);
+						wlo[3] = (uint8_t)(sta>>24);
+						wlo[4] = (uint8_t)(sln);
+						wlo[5] = (uint8_t)(sln >> 8);
+					}
+					if(tln) {
+						*(uint32_t*)(allsync.out) = ISIMSG(SYNCMEM32, 0, 8+tln);
 						for(k = 0; k < allses.count; k++) {
 							struct isiSession *ses;
 							ses = allses.table[k];
