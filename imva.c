@@ -113,10 +113,14 @@ static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg,
 	return 0;
 }
 
+static struct isiInfoCalls imvaCalls = {
+	.MsgIn = imva_MsgIn,
+	.Reset = imva_reset
+};
+
 static int imva_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
-	info->MsgIn = imva_MsgIn;
-	info->Reset = imva_reset;
+	info->c = &imvaCalls;
 	return 0;
 }
 

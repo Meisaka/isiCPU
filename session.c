@@ -1,6 +1,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <poll.h>
 #include <netinet/ip.h>
@@ -194,7 +195,11 @@ readagain:
 			isilog(L_WARN, "net-session: improper read\n");
 		}
 	}
-	if(i < 0) { isilogerr("socket read"); return -1; }
+	if(i < 0) {
+		if(i == EAGAIN || i == EWOULDBLOCK) return 0;
+		isilogerr("socket read");
+		return -1;
+	}
 	if(i == 0) { isilog(L_WARN, "net-session: empty read\n"); return -1; }
 	if(ses->rcv < 4) {
 		ses->rcv += i;
@@ -358,7 +363,7 @@ readagain:
 				pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			} else if(a->id.objtype >= 0x3000 && a->id.objtype < 0x3fff) {
 				isi_push_dev(&allcpu, a);
-				if(a->Reset) a->Reset(a);
+				if(a->c->Reset) a->c->Reset(a);
 				fetchtime(&a->nrun);
 				isilog(L_INFO, "net-session: enabling CPU\n");
 				pr[2] = 0;
@@ -366,7 +371,7 @@ readagain:
 				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
 			}
 		} else {
-			if(a->Reset) a->Reset(a);
+			if(a->c->Reset) a->c->Reset(a);
 			isilog(L_INFO, "net-session: resetting CPU\n");
 			pr[2] = 0;
 		}
@@ -396,8 +401,8 @@ readagain:
 			break;
 		}
 		if(info->id.objtype >= 0x2000) {
-			if(info->MsgIn) {
-				info->MsgIn(info, info->updev, (uint16_t*)(pm+2), mtime);
+			if(info->c->MsgIn) {
+				info->c->MsgIn(info, info->updev, (uint16_t*)(pm+2), mtime);
 			}
 		}
 	}

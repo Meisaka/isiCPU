@@ -96,9 +96,13 @@ static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 1;
 }
 
+static struct isiInfoCalls EEROMCalls = {
+	.MsgIn = EEROM_MsgIn
+};
+
 static int EEROM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
-	info->MsgIn = EEROM_MsgIn;
+	info->c = &EEROMCalls;
 	uint32_t rqs = 0;
 	uint64_t mid = 0;
 	uint8_t le = 0;

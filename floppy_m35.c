@@ -75,8 +75,8 @@ static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	if(dev->iword) {
-		if(info->hostcpu && info->hostcpu->MsgIn) {
-			info->hostcpu->MsgIn(info->hostcpu, info, &dev->iword, *mtime);
+		if(info->hostcpu && info->hostcpu->c->MsgIn) {
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &dev->iword, *mtime);
 		}
 	}
 }
@@ -155,7 +155,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
 	while(isi_time_lt(&info->nrun, &crun)) {
 		if(dev->oper) {
-			if(!info->dndev || !info->dndev->MsgIn) {
+			if(!info->dndev || !info->dndev->c->MsgIn) {
 				dev->errcode = ERR_M35_EJECT;
 				dev->oper = 0;
 				Disk_M35FD_statechange(info, &info->nrun);
@@ -178,7 +178,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 					dr += (512 * (dev->seeksector & 3));
 					dseek.mcode = 0x0020;
 					dseek.block = dev->seeksector >> 2;
-					info->dndev->MsgIn(info->dndev, info, (uint16_t*)&dseek, crun);
+					info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, crun);
 					if(dev->oper == 1) {
 						uint16_t mc;
 						mc = dev->rwaddr;
@@ -220,12 +220,16 @@ static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t 
 	return 1;
 }
 
+static struct isiInfoCalls Disk_M35FDCalls = {
+	.Reset = Disk_M35FD_Reset, /* power on reset */
+	.MsgIn = Disk_M35FD_MsgIn, /* message from CPU or network */
+	.RunCycles = Disk_M35FD_Tick, /* scheduled runtime */
+	.QueryAttach = Disk_M35FD_QAttach
+};
+
 static int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
-	info->Reset = Disk_M35FD_Reset; /* power on reset */
-	info->MsgIn = Disk_M35FD_MsgIn; /* message from CPU or network */
-	info->RunCycles = Disk_M35FD_Tick; /* scheduled runtime */
-	info->QueryAttach = Disk_M35FD_QAttach;
+	info->c = &Disk_M35FDCalls;
 	return 0;
 }
 

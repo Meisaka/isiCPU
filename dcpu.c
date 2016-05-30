@@ -115,14 +115,18 @@ static int DCPU_Attach(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
+static struct isiInfoCalls DCPUCalls = {
+	.RunCycles = DCPU_run,
+	.Reset = DCPU_reset,
+	.MsgIn = DCPU_interrupt,
+	.QueryAttach = DCPU_QueryAttach,
+	.Attach = DCPU_Attach
+};
+
 static int DCPU_init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	isi_setrate((struct isiCPUInfo *)info, 100000); // 100kHz
-	info->RunCycles = DCPU_run;
-	info->Reset = DCPU_reset;
-	info->MsgIn = DCPU_interrupt;
-	info->QueryAttach = DCPU_QueryAttach;
-	info->Attach = DCPU_Attach;
+	info->c = &DCPUCalls;
 	return 0;
 }
 
@@ -145,8 +149,8 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->IQC = 0;
 	pr->msg = 0;
 	if((info->dndev)
-		&& (info->dndev->MsgIn)
-		&& (info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
+		&& (info->dndev->c->MsgIn)
+		&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
 		pr->hwcount = pr->dai;
 	}
 	return 0;
@@ -568,8 +572,8 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				pr->msg = 1;
 				pr->dai = alu1.u;
 				if((info->dndev)
-					&& (info->dndev->MsgIn)
-					&& (info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
+					&& (info->dndev->c->MsgIn)
+					&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -584,8 +588,8 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				pr->msg = 2;
 				pr->dai = alu1.u;
 				if((info->dndev)
-					&& (info->dndev->MsgIn)
-					&& (op = info->dndev->MsgIn(info->dndev, info, &pr->msg, info->nrun))) {
+					&& (info->dndev->c->MsgIn)
+					&& (op = info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;

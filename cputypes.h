@@ -91,8 +91,7 @@ struct isiConTable {
 	uint32_t limit;
 };
 
-struct isiInfo {
-	struct objtype id;
+struct isiInfoCalls {
 	isi_run_call RunCycles;
 	isi_message_call MsgIn;
 	isi_message_call MsgOut;
@@ -101,6 +100,11 @@ struct isiInfo {
 	isi_attach_call Attached;
 	isi_control_call Reset;
 	isi_control_call Delete;
+};
+
+struct isiInfo {
+	struct objtype id;
+	struct isiInfoCalls *c;
 	struct isiInfo *updev;
 	struct isiInfo *dndev;
 	void * rvstate;

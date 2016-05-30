@@ -74,10 +74,10 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 		isilog(L_DEBUG, "hwm-reset-all c=%ld\n", hs);
 		for(h = 0; h < hs; h++) {
 			dev = bus->busdev.table[h];
-			if(dev->Reset) dev->Reset(dev);
-			if(dev->MsgIn) {
+			if(dev->c->Reset) dev->c->Reset(dev);
+			if(dev->c->MsgIn) {
 				isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name, h);
-				dev->MsgIn(dev, src, msg, mtime);
+				dev->c->MsgIn(dev, src, msg, mtime);
 			}
 		}
 		return 0;
@@ -97,8 +97,8 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 			msg[6] = (uint16_t)(mid->mfgid >> 16);
 			r = 0;
 		}
-		if(dev->MsgIn) {
-			r = dev->MsgIn(dev, src, msg, mtime);
+		if(dev->c->MsgIn) {
+			r = dev->c->MsgIn(dev, src, msg, mtime);
 		}
 		return r;
 	default:
@@ -116,22 +116,26 @@ static int HWM_Run(struct isiInfo *info, struct timespec crun)
 	hs = bus->busdev.count;
 	for(k = 0; k < hs; k++) {
 		dev = bus->busdev.table[k];
-		if(dev->RunCycles) {
-			dev->RunCycles(dev, crun);
+		if(dev->c->RunCycles) {
+			dev->c->RunCycles(dev, crun);
 		}
 	}
 	return 0;
 }
 
+static struct isiInfoCalls HWMCalls = {
+	.RunCycles = HWM_Run,
+	.MsgIn = HWM_Query,
+	.Attach = HWM_DeviceAdd,
+	.Attached = HWM_Attached,
+	.Delete = HWM_FreeAll
+};
+
 static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
 	if(!info) return -1;
 	isilog(L_DEBUG, "hwm: init bus\n");
-	info->RunCycles = HWM_Run;
-	info->MsgIn = HWM_Query;
-	info->Attach = HWM_DeviceAdd;
-	info->Attached = HWM_Attached;
-	info->Delete = HWM_FreeAll;
+	info->c = &HWMCalls;
 	return 0;
 }
 

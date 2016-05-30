@@ -74,8 +74,8 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 	if(!(clk->raccum++ < clk->rate)) { /* handle divided rate */
 		clk->raccum = 0;
 		clk->ctime++;
-		if(clk->iword && info->hostcpu && info->hostcpu->MsgIn) {
-			info->hostcpu->MsgIn(info->hostcpu, info, &clk->iword, info->nrun);
+		if(clk->iword && info->hostcpu && info->hostcpu->c->MsgIn) {
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &clk->iword, info->nrun);
 		}
 	}
 	if(clk->accum++ < 15) { /* magically sync the 60Hz base clock to 1 second */
@@ -98,11 +98,15 @@ static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 1;
 }
 
+static struct isiInfoCalls ClockCalls = {
+	.Reset = Clock_Reset,
+	.MsgIn = Clock_MsgIn,
+	.RunCycles = Clock_Tick
+};
+
 static int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
-	info->Reset = Clock_Reset;
-	info->MsgIn = Clock_MsgIn;
-	info->RunCycles = Clock_Tick;
+	info->c = &ClockCalls;
 	return 0;
 }
 

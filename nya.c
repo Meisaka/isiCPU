@@ -138,10 +138,14 @@ static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *m
 	return 0;
 }
 
+static struct isiInfoCalls Nya_LEMCalls = {
+	.MsgIn = Nya_LEM_MsgIn,
+	.Reset = Nya_LEM_Reset
+};
+
 static int Nya_LEM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 {
-	info->MsgIn = Nya_LEM_MsgIn;
-	info->Reset = Nya_LEM_Reset;
+	info->c = &Nya_LEMCalls;
 	return 0;
 }
 

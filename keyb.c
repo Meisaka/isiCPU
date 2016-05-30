@@ -93,8 +93,8 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	case 0x20E7:
 		Keyboard_KDown(kyb, msg[1]);
 		if(kyb->imsg) {
-			if(info->hostcpu && info->hostcpu->MsgIn) {
-				info->hostcpu->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
+			if(info->hostcpu && info->hostcpu->c->MsgIn) {
+				info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
 			} else {
 				isilog(L_DEBUG, "Keyboard Interrupt dropped!\n");
 			}
@@ -102,8 +102,8 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 		return 0;
 	case 0x20E8:
 		Keyboard_KUp(kyb, msg[1]);
-		if(kyb->imsg && info->hostcpu && info->hostcpu->MsgIn) {
-			info->hostcpu->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
+		if(kyb->imsg && info->hostcpu && info->hostcpu->c->MsgIn) {
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
 		}
 		return 0;
 	default:
@@ -128,9 +128,13 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	return 0;
 }
 
+static struct isiInfoCalls KeyboardCalls = {
+	.MsgIn = Keyboard_MsgIn
+};
+
 static int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
 {
-	info->MsgIn = Keyboard_MsgIn;
+	info->c = &KeyboardCalls;
 	return 0;
 }
 

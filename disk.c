@@ -242,6 +242,11 @@ ISIREFLECT(struct disk_svstate,
 	ISIR(disk_svstate, char, dblock)
 )
 
+static struct isiInfoCalls diskCalls = {
+	.Delete = isi_delete_disk,
+	.MsgIn = isi_disk_msgin
+};
+
 static int disk_init(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 {
 	char dskname[32];
@@ -273,8 +278,7 @@ static int disk_init(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 	mdisk->fd = fd;
 	mdisk->diskid = diskid;
 	mdisk->block = 0;
-	idisk->Delete = isi_delete_disk;
-	idisk->MsgIn = isi_disk_msgin;
+	idisk->c = &diskCalls;
 	isi_read_disk_file(mdisk);
 	return 0;
 }

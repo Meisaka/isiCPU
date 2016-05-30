@@ -147,19 +147,19 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 	if(item->id.objtype < 0x2f00) return -1;
 	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
 		if(dev->id.objtype > 0x2000 && dev->id.objtype < 0x2f00) {
-			if(item->QueryAttach) {
-				if((e = item->QueryAttach(item, dev))) {
+			if(item->c->QueryAttach) {
+				if((e = item->c->QueryAttach(item, dev))) {
 					return e;
 				}
 			}
 			item->mem = dev;
-			if(item->Attach) e = item->Attach(item, dev);
+			if(item->c->Attach) e = item->c->Attach(item, dev);
 			return e;
 		}
 	}
 	if(dev->id.objtype < 0x2f00) return -1;
-	if(item->QueryAttach) {
-		if((e = item->QueryAttach(item, dev))) {
+	if(item->c->QueryAttach) {
+		if((e = item->c->QueryAttach(item, dev))) {
 			return e;
 		}
 	}
@@ -175,8 +175,8 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev)
 		dev->hostcpu = item->hostcpu;
 		dev->mem = item->mem;
 	}
-	if(item->Attach) item->Attach(item, dev);
-	if(dev->Attached) dev->Attached(dev, item);
+	if(item->c->Attach) item->c->Attach(item, dev);
+	if(dev->c->Attached) dev->c->Attached(dev, item);
 	if(dev->id.objtype >= ISIT_BUSDEV && dev->id.objtype < ISIT_ENDBUSDEV) {
 		size_t k;
 		size_t hs;
@@ -361,6 +361,7 @@ int isi_create_object(int objtype, struct objtype **out)
 	return 0;
 }
 
+static struct isiInfoCalls emptyobject = { 0, };
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg)
 {
 	uint32_t x;
@@ -386,6 +387,7 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 	info->meta = con;
 	info->rvproto = con->rvproto;
 	info->svproto = con->svproto;
+	info->c = &emptyobject;
 	if(con->PreInit) {
 		rs = con->PreInit(info, cfg, lcfg);
 		if(rs) {
@@ -435,8 +437,8 @@ int isi_delete_object(struct objtype *obj)
 	struct isiObjTable *t = &allobj;
 	if(obj->objtype >= 0x2fff) {
 		struct isiInfo *info = (struct isiInfo *)obj;
-		if(info->Delete) {
-			info->Delete(info);
+		if(info->c->Delete) {
+			info->c->Delete(info);
 		}
 		if(info->rvstate) {
 			free(info->rvstate);
@@ -914,7 +916,7 @@ int main(int argc, char**argv, char**envp)
 			if(tcc < 20) tcc = 20;
 			while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
 				sts.quanta++;
-				ccpi->RunCycles(ccpi, CRun);
+				ccpi->c->RunCycles(ccpi, CRun);
 				//TODO some hardware may need to work at the same time
 				lucycles += ccpu->cycl;
 				if(rqrun && (ccpu->ctl & ISICTL_DEBUG) && (ccpu->cycl)) {
@@ -928,8 +930,8 @@ int main(int argc, char**argv, char**envp)
 			sts.cpusched++;
 			fetchtime(&CRun);
 
-			if(ccpi->dndev && ccpi->dndev->RunCycles) {
-				ccpi->dndev->RunCycles(ccpi->dndev, CRun);
+			if(ccpi->dndev && ccpi->dndev->c->RunCycles) {
+				ccpi->dndev->c->RunCycles(ccpi->dndev, CRun);
 			}
 		}
 		fetchtime(&CRun);
