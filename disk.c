@@ -56,11 +56,11 @@ int isi_text_dec(const char *text, int len, int limit, void *vv, int olen)
 				} else if(cs == '_') {
 					ce = (ce<<6) | 63;
 				} else return -1;
-			} else if(cs == '-') {
-				ce = (ce<<6) | 62;
 			} else {
 				return -1;
 			}
+		} else if(cs == '-') {
+			ce = (ce<<6) | 62;
 		} else {
 			return -1;
 		}
@@ -208,6 +208,9 @@ static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			isi_read_disk_file(disk);
 		}
 		return 0;
+	case 0x0021:
+		if(isi_test_disk(disk)) isi_write_disk_file(disk);
+		break;
 	default:
 		break;
 	}
@@ -234,13 +237,22 @@ int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 	return 0;
 }
 
-int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk)
+ISIREFLECT(struct disk_svstate,
+	ISIR(disk_svstate, char, block)
+	ISIR(disk_svstate, char, dblock)
+)
+
+static int disk_init(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 {
 	char dskname[32];
 	char *ldisk;
 	int oflags = 0;
 	int fd;
-	if(!ndisk || !diskid) return -1;
+	uint64_t diskid = 0;
+	if(isi_fetch_parameter(cfg, lcfg, 1, &diskid, sizeof(uint64_t))) {
+		return ISIERR_INVALIDPARAM;
+	}
+	if(!idisk || !diskid) return -1;
 	isi_text_enc(dskname, 11, &diskid, 8);
 	if(isi_find_disk(diskid, &ldisk)) {
 		asprintf(&ldisk, "%s.idi", dskname);
@@ -253,22 +265,29 @@ int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk)
 	if(fd == -1) {
 		isilogerr("open");
 		free(ldisk);
-		return -1;
+		return ISIERR_FILE;
 	}
+
 	struct isiDisk *mdisk;
-	struct isiInfo *idisk;
-	isi_create_object(ISIT_DISK, (struct objtype**)&idisk);
 	mdisk = (struct isiDisk *)idisk;
 	mdisk->fd = fd;
 	mdisk->diskid = diskid;
 	mdisk->block = 0;
 	idisk->Delete = isi_delete_disk;
 	idisk->MsgIn = isi_disk_msgin;
-	idisk->svstate = malloc(sizeof(struct disk_svstate));
 	isi_read_disk_file(mdisk);
-	*ndisk = idisk;
-	free(ldisk);
 	return 0;
+}
+static char Disk_Meta[] = {0,0,0,0,0,0,0,0,0,0,0,0};
+static struct isiConstruct Disk_Con = {
+	ISIT_DISK, "disk", "Disk media",
+	0, disk_init, 0,
+	NULL, &ISIREFNAME(struct disk_svstate),
+	&Disk_Meta
+};
+void Disk_Register()
+{
+	isi_register(&Disk_Con);
 }
 
 int isi_read_disk_file(struct isiDisk *disk)
@@ -285,7 +304,7 @@ int isi_read_disk_file(struct isiDisk *disk)
 	}
 	if( i < 0 ) {
 		isilogerr("read");
-		return -1;
+		return ISIERR_FILE;
 	}
 	memcpy(ds->dblock, ds->block, sizeof(ds->block));
 	return 0;
@@ -303,7 +322,7 @@ int isi_write_disk_file(struct isiDisk *disk)
 	}
 	if( i < 0 ) {
 		isilogerr("write");
-		return -1;
+		return ISIERR_FILE;
 	}
 	return 0;
 }

@@ -365,6 +365,7 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 {
 	uint32_t x;
 	int i;
+	int rs = 0;
 	struct isiConstruct *con = NULL;
 	if(!objtype || !out) return ISIERR_INVALIDPARAM;
 	for(x = 0; x < allcon.count; x++) {
@@ -385,7 +386,14 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 	info->meta = con;
 	info->rvproto = con->rvproto;
 	info->svproto = con->svproto;
-	if(con->PreInit) con->PreInit(info, cfg, lcfg);
+	if(con->PreInit) {
+		rs = con->PreInit(info, cfg, lcfg);
+		if(rs) {
+			isi_delete_object(ndev);
+			*out = 0;
+			return rs;
+		}
+	}
 	if(objtype > 0x2f00 && con->QuerySize) {
 		size_t sz = 0;
 		con->QuerySize(0, cfg, lcfg, &sz);
@@ -409,7 +417,14 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 			memset(info->svstate, 0, con->svproto->length);
 		}
 	}
-	if(con->Init) con->Init(info, cfg, lcfg);
+	if(con->Init) {
+		rs = con->Init(info, cfg, lcfg);
+		if(rs) {
+			isi_delete_object(ndev);
+			*out = 0;
+			return rs;
+		}
+	}
 	*out = ndev;
 	return 0;
 }
@@ -612,10 +627,13 @@ int isi_addcpu()
 	isi_make_object(isi_lookup_name("mack_35fd"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 	if(diskf) {
+		uint8_t ist[24];
+		ist[0] = 0;
 		uint64_t dsk = 0;
 		struct isiInfo *ndsk;
-		isi_text_dec(diskf, strlen(diskf), 11, &dsk, 8);
-		isi_create_disk(dsk, &ndsk);
+		isi_fname_id(diskf, &dsk);
+		isi_write_parameter(ist, 24, 1, &dsk, sizeof(uint64_t));
+		isi_make_object(isi_lookup_name("disk"), (struct objtype**)&ndsk, ist, 24);
 		isi_attach(ninfo, ndsk);
 	}
 	isi_make_object(isi_lookup_name("imva"), (struct objtype**)&ninfo, 0, 0);
@@ -629,6 +647,15 @@ void isi_debug_dump_objtable()
 	uint32_t u = 0;
 	while(u < allobj.count) {
 		fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u]->id, allobj.table[u]->objtype);
+		u++;
+	}
+}
+
+void isi_debug_dump_cputable()
+{
+	uint32_t u = 0;
+	while(u < allcpu.count) {
+		fprintf(stderr, "cpu-list: [%08x]: %x\n", allcpu.table[u]->id.id, allcpu.table[u]->id.objtype);
 		u++;
 	}
 }
@@ -682,6 +709,10 @@ void handle_stdin()
 	case 'l':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_objtable();
+		break;
+	case 'p':
+		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
+		isi_debug_dump_cputable();
 		break;
 	default:
 		break;

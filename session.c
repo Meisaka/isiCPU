@@ -360,12 +360,14 @@ readagain:
 				isi_push_dev(&allcpu, a);
 				if(a->Reset) a->Reset(a);
 				fetchtime(&a->nrun);
+				isilog(L_INFO, "net-session: enabling CPU\n");
 				pr[2] = 0;
 			} else {
 				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
 			}
 		} else {
 			if(a->Reset) a->Reset(a);
+			isilog(L_INFO, "net-session: resetting CPU\n");
 			pr[2] = 0;
 		}
 		session_write_msg(ses); /* TODO multisession */

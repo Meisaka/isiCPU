@@ -176,7 +176,6 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
 int isi_delete_object(struct objtype *obj);
 int isi_find_obj(uint32_t id, struct objtype **target);
-int isi_create_disk(uint64_t diskid, struct isiInfo **ndisk);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
 int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target);
@@ -235,6 +234,7 @@ int isi_remove_sync(struct objtype *target);
 #define ISIERR_MISSPREREQ -3
 #define ISIERR_NOCOMPAT -4
 #define ISIERR_NOMEM -5
+#define ISIERR_FILE -6
 
 #define ISIN_SYNC_NONE 0
 #define ISIN_SYNC_DEVR 1
