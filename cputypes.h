@@ -16,19 +16,33 @@
 #endif
 struct isiInfo;
 struct isiCPUInfo;
+struct isiSession;
 
 struct objtype {
 	uint32_t objtype;
 	uint32_t id;
+	uint64_t uuid;
 };
+
+struct sescommandset {
+	uint16_t cmd;
+	uint16_t stype;
+	uint32_t id;
+};
+
+typedef int (*isi_ses_handle)(struct isiSession *ses, struct timespec mtime);
 
 struct isiSession {
 	struct objtype id;
+	int stype;
 	int sfd;
 	struct sockaddr_in r_addr;
 	uint32_t rcv;
 	uint8_t *in;
 	uint8_t *out;
+	struct sescommandset *cmdq;
+	isi_ses_handle Recv;
+	isi_ses_handle LTick;
 };
 
 struct isiSessionTable {
@@ -109,8 +123,10 @@ struct isiInfo {
 	struct isiInfo *dndev;
 	void * rvstate;
 	void * svstate;
+	void * nvstate;
 	struct isiReflection *rvproto;
 	struct isiReflection *svproto;
+	size_t nvsize;
 	void * mem;
 	struct isiInfo * hostcpu;
 	const struct isiConstruct * meta;
@@ -131,10 +147,14 @@ struct isiDisk SUBCLASS(isiInfo) {
 	struct isiInfo i;
 #endif
 	int fd;
-	uint64_t diskid;
-	uint32_t block;
+};
+struct disk_rvstate {
+	uint32_t size;
+	uint8_t wrprotect;
 };
 struct disk_svstate {
+	uint32_t dirty;
+	uint32_t index;
 	char block[4096];
 	char dblock[4096];
 };
@@ -180,6 +200,7 @@ int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
 int isi_delete_object(struct objtype *obj);
 int isi_find_obj(uint32_t id, struct objtype **target);
+int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
 int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target);
@@ -218,6 +239,7 @@ int session_write(struct isiSession *, int len);
 int session_write_msg(struct isiSession *);
 int session_write_msgex(struct isiSession *, void *);
 int session_write_buf(struct isiSession *, void *, int len);
+int isi_pushses(struct isiSession *s);
 
 void isi_synctable_init();
 void isi_debug_dump_synctable();
@@ -239,6 +261,7 @@ int isi_remove_sync(struct objtype *target);
 #define ISIERR_NOCOMPAT -4
 #define ISIERR_NOMEM -5
 #define ISIERR_FILE -6
+#define ISIERR_NOTALLOWED -40
 
 #define ISIN_SYNC_NONE 0
 #define ISIN_SYNC_DEVR 1

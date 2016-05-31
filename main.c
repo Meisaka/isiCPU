@@ -29,11 +29,12 @@ static int rqrun = 0;
 static int flagsvr = 0;
 static char * binf = 0;
 static char * endf = 0;
+static char * redisaddr = 0;
 static char * diskf = 0;
 static int listenportnumber = 58704;
 
-int fdlisten = -1;
 int fdlog = STDERR_FILENO;
+int usefs = 0;
 
 static const int quantum = 1000000000 / 10000; // ns
 
@@ -59,9 +60,8 @@ void isi_register_objects();
 int isi_scan_dir();
 void isi_init_sestable();
 int isi_delete_ses(struct isiSession *s);
-int handle_newsessions();
-int handle_session_rd(struct isiSession *ses, struct timespec mtime);
 int makeserver(int portnumber);
+int redis_make_session_lu(const char * addrstr);
 void showdisasm_dcpu(const struct isiInfo *info);
 void showdiag_dcpu(const struct isiInfo* info, int fmt);
 
@@ -85,7 +85,7 @@ static char logwrout[ISILOGBUFFER];
 void isilogerr(const char * desc)
 {
 	int r;
-	r = snprintf(logwrout, ISILOGBUFFER, "Error: %s: %s", desc, strerror(errno));
+	r = snprintf(logwrout, ISILOGBUFFER, "Error: %s: %s\n", desc, strerror(errno));
 	if(r > 0) {
 		write(fdlog, logwrout, r);
 	}
@@ -315,6 +315,22 @@ int isi_find_obj(uint32_t id, struct objtype **target)
 	for(i = 0; i < allobj.count; i++) {
 		struct objtype *obj = allobj.table[i];
 		if(obj && obj->id == id) {
+			if(target) {
+				*target = obj;
+			}
+			return 0;
+		}
+	}
+	return 1;
+}
+
+int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target)
+{
+	size_t i;
+	if(!cid || !uuid) return -1;
+	for(i = 0; i < allobj.count; i++) {
+		struct objtype *obj = allobj.table[i];
+		if(obj && obj->objtype == cid && obj->uuid == uuid) {
 			if(target) {
 				*target = obj;
 			}
@@ -661,22 +677,23 @@ void isi_debug_dump_cputable()
 		u++;
 	}
 }
+void isi_redis_test();
 
-void handle_stdin()
+int handle_stdin(struct isiSession *ses, struct timespec mtime)
 {
 	int i;
-	char cc;
+	char cc[10];
 	char ccv[10];
-	i = read(0, &cc, 1);
-	if(i < 1) return;
-	switch(cc) {
+	i = read(ses->sfd, cc, 10);
+	if(i < 1) return 0;
+	switch(cc[0]) {
 	case 10:
 		if(allcpu.count && ((struct isiCPUInfo*)allcpu.table[0])->ctl & ISICTL_DEBUG) {
 			((struct isiCPUInfo*)allcpu.table[0])->ctl |= ISICTL_STEPE;
 		}
 		break;
 	case 'r':
-		i = read(0, ccv, 5);
+		i = read(ses->sfd, ccv, 5);
 		if(i < 5) break;
 		{
 			uint32_t t = 0;
@@ -702,11 +719,14 @@ void handle_stdin()
 		break;
 	case 'x':
 		haltnow = 1;
-		i = read(0, ccv, 1);
+		i = read(ses->sfd, ccv, 1);
 		break;
 	case 'n':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_synctable();
+		break;
+	case 'L':
+		isi_redis_test();
 		break;
 	case 'l':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
@@ -719,6 +739,24 @@ void handle_stdin()
 	default:
 		break;
 	}
+	return 0;
+}
+
+int make_interactive()
+{
+	struct isiSession *ses;
+	int i;
+	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
+		return i;
+	}
+	if(fcntl(0, F_SETFL, O_NONBLOCK) < 0) {
+		isilogerr("fcntl");
+		return -1;
+	}
+	ses->sfd = 0;
+	ses->Recv = handle_stdin;
+	isi_pushses(ses);
+	return 0;
 }
 
 struct stats {
@@ -743,10 +781,14 @@ static int parse_args(int argc, char**argv)
 				case 'l':
 					isi_scan_dir();
 					break;
+				case 'F':
+					usefs = 1;
+					break;
 				case 'd':
 					k = -1;
 					if(i+1<argc) {
 						diskf = strdup(argv[++i]);
+						usefs = 1;
 					}
 					break;
 				case 'p':
@@ -774,6 +816,12 @@ static int parse_args(int argc, char**argv)
 					break;
 				case 'D':
 					flagdbg = 1;
+					break;
+				case 'R':
+					k = -1;
+					if(i+1<argc) {
+						redisaddr = strdup(argv[++i]);
+					}
 					break;
 				case 'B':
 					k = -1;
@@ -842,7 +890,6 @@ int main(int argc, char**argv, char**envp)
 	struct stats sts = {0, };
 	int paddlimit = 0;
 	int premlimit = 0;
-	int extrafds = 0;
 
 	isi_init_contable();
 	isi_register_objects();
@@ -874,6 +921,9 @@ int main(int argc, char**argv, char**envp)
 	hnler.sa_handler = sysfaulthdl;
 	hnler.sa_flags = 0;
 
+	if(redisaddr) {
+		redis_make_session_lu(redisaddr);
+	}
 	if(!rqrun && !flagsvr) {
 		fprintf(stderr, "At least -r or -s must be specified.\n");
 		return 0;
@@ -885,6 +935,9 @@ int main(int argc, char**argv, char**envp)
 	if(flagsvr) {
 		if(!rqrun) enter_service();
 		makeserver(listenportnumber);
+	}
+	if(rqrun) {
+		make_interactive();
 	}
 
 	sigaction(SIGINT, &hnler, NULL);
@@ -898,7 +951,6 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
 		showdiag_dcpu(allcpu.table[cux], 1);
 	}
-	extrafds = (flagsvr?1:0) + (rqrun?1:0);
 	while(!haltnow) {
 		struct isiCPUInfo * ccpu;
 		struct isiInfo * ccpi;
@@ -976,39 +1028,26 @@ int main(int argc, char**argv, char**envp)
 			if(premlimit < 20) premlimit+=10;
 			if(paddlimit < 20) paddlimit+=2;
 			for(k = 0; k < allses.count; k++) {
-				*((uint32_t*)allses.table[k]->out) = ISIMSG(PING, 0, 0);
-				session_write_msg(allses.table[k]);
-				if(errno == EPIPE) {
-					close(allses.table[k]->sfd);
-					errno = 0;
-				}
+				struct isiSession *ses = allses.table[k];
+				if(ses->LTick)
+					ses->LTick(ses, CRun);
 			}
 		}
 
-		if(allses.pcount != allses.count + extrafds) {
+		if(allses.pcount != allses.count) {
 			if(allses.ptable) {
 				free(allses.ptable);
 				allses.ptable = 0;
 			}
-			allses.pcount = allses.count + extrafds;
+			allses.pcount = allses.count;
 			allses.ptable = (struct pollfd*)malloc(sizeof(struct pollfd) * allses.pcount);
 			if(!allses.ptable) {
 				isilogerr("malloc poll table fails!");
 			}
 			i = 0;
-			if(rqrun) {
-				allses.ptable[i].fd = 0;
-				allses.ptable[i].events = POLLIN;
-				i++;
-			}
-			if(flagsvr) {
-				allses.ptable[i].fd = fdlisten;
-				allses.ptable[i].events = POLLIN;
-				i++;
-			}
 			for(k = 0; k < allses.count; k++) {
 				allses.ptable[i].fd = allses.table[k]->sfd;
-				allses.ptable[i].events = POLLIN | POLLOUT;
+				allses.ptable[i].events = POLLIN;
 				i++;
 			}
 		}
@@ -1020,6 +1059,7 @@ int main(int argc, char**argv, char**envp)
 		if(i > 0) {
 			for(k = 0; k < allses.pcount; k++) {
 				if(!allses.ptable[k].revents) continue;
+				struct isiSession *ses = allses.table[k];
 				const char *etxt = 0;
 				/* Here be dragons */
 				switch(allses.ptable[k].revents) {
@@ -1028,25 +1068,19 @@ int main(int argc, char**argv, char**envp)
 				case POLLNVAL: etxt = "poll: FD invalid\n"; goto sessionerror;
 				default:
 					if(allses.ptable[k].revents & POLLIN) {
-						if(rqrun && allses.ptable[k].fd == 0) {
-							handle_stdin();
-						} else if(allses.ptable[k].fd == fdlisten) {
-							handle_newsessions();
-						} else if(allses.table[k - extrafds]->sfd == allses.ptable[k].fd) {
-							if(handle_session_rd(allses.table[k - extrafds], CRun))
+						if(ses->sfd == allses.ptable[k].fd) {
+							if(ses->Recv(ses, CRun))
 								goto sessionerror;
 						} else {
 							isilog(L_ERR, "netses: session ID error\n");
 						}
 					}
-					if(allses.ptable[k].revents & POLLOUT)
-					break;
 				}
 				continue;
 sessionerror:
 				if(etxt) isilog(L_ERR, etxt);
-				if(allses.table[k - extrafds]->sfd == allses.ptable[k].fd) {
-					isi_delete_ses(allses.table[k - extrafds]);
+				if(ses->sfd == allses.ptable[k].fd) {
+					isi_delete_ses(ses);
 					k = allses.pcount;
 				}
 			}
@@ -1064,13 +1098,9 @@ sessionerror:
 			break;
 		}
 	}
-	if(fdlisten > -1) {
-		close(fdlisten);
-	}
 	if(flagsvr) {
 		isilog(L_WARN, "closing connections\n");
 		while(allses.count) {
-			shutdown(allses.table[0]->sfd, SHUT_RDWR);
 			isi_delete_ses(allses.table[0]);
 		}
 	}

@@ -9,13 +9,16 @@
 #include "cputypes.h"
 #include "netmsg.h"
 
-extern int fdlisten;
 extern struct isiDevTable alldev;
 extern struct isiDevTable allcpu;
 extern struct isiConTable allcon;
 extern struct isiSessionTable allses;
 extern struct isiObjTable allobj;
 int isi_create_object(int objtype, struct objtype **out);
+
+static int server_handle_new(struct isiSession *ses, struct timespec mtime);
+static int session_handle_rd(struct isiSession *ses, struct timespec mtime);
+static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime);
 
 int makeserver(int portnumber)
 {
@@ -44,7 +47,14 @@ int makeserver(int portnumber)
 		return -1;
 	}
 	isilog(L_INFO, "Listening on port %d ...\n", portnumber);
-	fdlisten = fdsvr;
+	struct isiSession *ses;
+	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
+		return i;
+	}
+	memcpy(&ses->r_addr, &lipn, sizeof(struct sockaddr_in));
+	ses->sfd = fdsvr;
+	ses->Recv = server_handle_new;
+	isi_pushses(ses);
 	return 0;
 }
 
@@ -86,6 +96,7 @@ int isi_delete_ses(struct isiSession *s)
 		t->table[i] = t->table[i+1];
 		i++;
 	}
+	if(s->in || s->out) shutdown(s->sfd, SHUT_RDWR); /* shutdown on buffered streams */
 	close(s->sfd);
 	free(s->in);
 	free(s->out);
@@ -93,14 +104,14 @@ int isi_delete_ses(struct isiSession *s)
 	return 0;
 }
 
-int handle_newsessions()
+static int server_handle_new(struct isiSession *hses, struct timespec mtime)
 {
 	int fdn, i;
 	socklen_t rin;
 	struct sockaddr_in ripn;
 	memset(&ripn, 0, sizeof(ripn));
 	rin = sizeof(ripn);
-	fdn = accept(fdlisten, (struct sockaddr*)&ripn, &rin);
+	fdn = accept(hses->sfd, (struct sockaddr*)&ripn, &rin);
 	if(fdn < 0) {
 		isilogerr("accept");
 		fdn = 0;
@@ -135,6 +146,9 @@ int handle_newsessions()
 			, ipa.a[0], ipa.a[1], ipa.a[2], ipa.a[3], ntohs(ripn.sin_port)
 		);
 	}
+	ses->stype = 1;
+	ses->Recv = session_handle_rd;
+	ses->LTick = session_handle_keepalive;
 	isi_pushses(ses);
 	return 0;
 }
@@ -142,6 +156,7 @@ int handle_newsessions()
 int session_write_msg(struct isiSession *ses)
 {
 	int len;
+	if(ses->stype != 1) return -1;
 	len = (*(uint32_t*)(ses->out)) & 0x1fff;
 	if(len > 1300) {
 		len = 1300;
@@ -158,6 +173,7 @@ int session_write_msg(struct isiSession *ses)
 int session_write_msgex(struct isiSession *ses, void *buf)
 {
 	int len;
+	if(ses->stype != 1) return -1;
 	len = (*(uint32_t*)(buf)) & 0x1fff;
 	if(len > 1300) {
 		len = 1300;
@@ -176,7 +192,20 @@ int session_write_buf(struct isiSession *ses, void *buf, int len)
 	return send(ses->sfd, (char*)buf, len, 0);
 }
 
-int handle_session_rd(struct isiSession *ses, struct timespec mtime)
+static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime)
+{
+	*((uint32_t*)ses->out) = ISIMSG(PING, 0, 0);
+	errno = 0;
+	session_write_msg(ses);
+	if(errno == EPIPE) {
+		close(ses->sfd);
+		errno = 0;
+		return -1;
+	}
+	return 0;
+}
+
+static int session_handle_rd(struct isiSession *ses, struct timespec mtime)
 {
 	int i;
 	uint32_t l;
