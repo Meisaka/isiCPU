@@ -10,6 +10,28 @@
 
 extern int usefs;
 
+struct disk_rvstate {
+	uint32_t size;
+	uint8_t wrprotect;
+};
+struct disk_svstate {
+	uint32_t dirty;
+	uint32_t index;
+	char block[4096];
+	char dblock[4096];
+};
+ISIREFLECT(struct disk_rvstate,
+	ISIR(disk_rvstate, uint32_t, size)
+	ISIR(disk_rvstate, uint8_t, wrprotect)
+)
+
+ISIREFLECT(struct disk_svstate,
+	ISIR(disk_svstate, uint32_t, dirty)
+	ISIR(disk_svstate, uint32_t, index)
+	ISIR(disk_svstate, char, block)
+	ISIR(disk_svstate, char, dblock)
+)
+
 int isi_read_disk_file(struct isiDisk *disk);
 int isi_write_disk_file(struct isiDisk *disk);
 int isi_create_object(int objtype, struct objtype **out);
@@ -264,18 +286,6 @@ int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 	return 0;
 }
 
-ISIREFLECT(struct disk_rvstate,
-	ISIR(disk_rvstate, uint32_t, size)
-	ISIR(disk_rvstate, uint8_t, wrprotect)
-)
-
-ISIREFLECT(struct disk_svstate,
-	ISIR(disk_svstate, uint32_t, dirty)
-	ISIR(disk_svstate, uint32_t, index)
-	ISIR(disk_svstate, char, block)
-	ISIR(disk_svstate, char, dblock)
-)
-
 static struct isiInfoCalls diskCalls = {
 	.Delete = isi_delete_disk,
 	.MsgIn = isi_disk_msgin
@@ -292,20 +302,21 @@ static int disk_init(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 	}
 	if(!idisk) return -1;
 	if(usefs) {
-		if(!diskid) return ISIERR_INVALIDPARAM;
-		isi_text_enc(dskname, 11, &diskid, 8);
-		if(isi_find_disk(diskid, &ldisk)) {
-			asprintf(&ldisk, "%s.idi", dskname);
-			oflags = O_CREAT;
-		}
-		if(!strcmp(dskname, ldisk)) {
-		}
-		isilog(L_DEBUG, "Openning Disk\n");
-		fd = open(ldisk, O_RDWR | oflags, 0644);
-		if(fd == -1) {
-			isilogerr("open");
-			free(ldisk);
-			return ISIERR_FILE;
+		if(diskid) {
+			isi_text_enc(dskname, 11, &diskid, 8);
+			if(isi_find_disk(diskid, &ldisk)) {
+				asprintf(&ldisk, "%s.idi", dskname);
+				oflags = O_CREAT;
+			}
+			if(!strcmp(dskname, ldisk)) {
+			}
+			isilog(L_DEBUG, "Openning Disk\n");
+			fd = open(ldisk, O_RDWR | oflags, 0644);
+			if(fd == -1) {
+				isilogerr("open");
+				free(ldisk);
+				return ISIERR_FILE;
+			}
 		}
 	} else if(diskid) {
 		return ISIERR_NOTALLOWED;

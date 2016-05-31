@@ -148,16 +148,6 @@ struct isiDisk SUBCLASS(isiInfo) {
 #endif
 	int fd;
 };
-struct disk_rvstate {
-	uint32_t size;
-	uint8_t wrprotect;
-};
-struct disk_svstate {
-	uint32_t dirty;
-	uint32_t index;
-	char block[4096];
-	char dblock[4096];
-};
 struct isiDiskSeekMsg {
 	uint16_t mcode;
 	uint16_t ex;
@@ -198,6 +188,7 @@ void isi_hw_wrmem(isiram16 ram, uint16_t a, uint16_t v);
 /* attach dev to item */
 int isi_attach(struct isiInfo *item, struct isiInfo *dev);
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
+int isi_create_object(int objtype, struct objtype **out);
 int isi_delete_object(struct objtype *obj);
 int isi_find_obj(uint32_t id, struct objtype **target);
 int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target);
