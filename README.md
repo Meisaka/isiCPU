@@ -7,12 +7,13 @@ Actual Features
 ------
 
  - [DCPU 1.7] [1] Emulation, good accuracy and error handling
- - Keyboard and LEM are emulated and network synched.
+ - Keyboard, LEM, Clock, Mackapar floppy, ROM, IMVA are emulated.
  - CPUs and hardware store components of state in isiCPU
  - Fairly abstract and portable hardware and CPU interface for emulation.
- - Network access to a single DCPU terminal (Keyboard and LEM).
+ - Network access to multiple DCPU terminals (Keyboard and Display).
+ - Multiple DCPUs can be run at once, and can be added at runtime.
  - Configurable TCP port
- - DCPU disassembly and simple debugger
+ - DCPU disassembly and debugger
  - Endian swap option for bin files
  - bin files load to a "rom" device
  - load estimation and support for multiple CPUs (mostly works)
@@ -27,7 +28,7 @@ Design Goals and Planned Features
  - Provide a network interface to the CPU and associated hardware. (WIP)
  - Both hardware and CPUs should each have their own unique ID number. (WIP)
  - CPUs and hardware must be able to be added/removed without affecting others. (WIP)
- - Runtime add/remove/configure/debug of hardware and CPUs from network API.
+ - Runtime add/remove/configure/debug of hardware and CPUs from network API. (WIP
  - Emulation layer will provide an API that allows add-on shared libraries.
  - Add-on libraries will be able to be loaded during emulation.
  - Add CPU [TR3200] [3]
@@ -71,10 +72,10 @@ Some of these features work with debugging disabled.
 
 ##### Interactive Console Commands
  - x : exit
- - <enter> : run 1 instruction
+ - *enter* : run 1 instruction
  - c : continue execution
  - bHHHH : toggle break point at HHHH (must be 4 hex char address)
  - rHHHH : read memory at HHHH (must be 4 hex char address)
- - f<num> : run for decimal num of cycles
+ - f*num* : run for decimal num of cycles
  - t : toggle trace on execute
 
