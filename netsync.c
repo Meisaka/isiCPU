@@ -6,6 +6,12 @@
 #include "cputypes.h"
 #include "netmsg.h"
 
+#define NSY_OBJ 1
+#define NSY_MEM 2
+#define NSY_MEMVALID 4
+#define NSY_SYNCOBJ 8
+#define NSY_SYNCMEM 16
+
 static struct isiSyncTable {
 	struct isiNetSync ** table;
 	uint32_t count;
@@ -192,10 +198,15 @@ int isi_add_devmemsync(struct objtype *target, struct objtype *memtarget, size_t
 		ns->memobj.objtype = memtarget->objtype;
 		isi_synctable_add(ns);
 		ns->synctype = ISIN_SYNC_MEMDEV;
+		ns->rate = rate;
+		isilog(L_DEBUG, "netsync: adding memdev sync, rate=%ld \n", rate);
+		ns->ctl = 0;
+	} else if(ns->rate != rate) {
+		ns->rate = rate;
+		isilog(L_DEBUG, "netsync: resetting memdev sync rate=%ld \n", rate);
 	}
-	ns->rate = rate;
-	isilog(L_DEBUG, "netsync: adding memdev sync rate=%ld \n", rate);
-	ns->ctl = 0;
+	ns->ctl |= NSY_SYNCMEM;
+	ns->ctl &= ~NSY_SYNCOBJ;
 	return 0;
 }
 
@@ -216,10 +227,14 @@ int isi_set_devmemsync_extent(struct objtype *target, struct objtype *memtarget,
 	if(index > 3) return -1;
 	if(index+1 > ns->extents) ns->extents = index+1;
 	if(ns->extents > 4) return -1;
-	ns->ctl = 0;
-	isilog(L_DEBUG, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
-	ns->base[index] = base;
-	ns->len[index] = extent;
+	ns->ctl |= NSY_SYNCMEM;
+	ns->ctl &= ~NSY_SYNCOBJ;
+	if(ns->base[index] != base || ns->len[index] != extent) {
+		ns->ctl &= ~NSY_MEM;
+		isilog(L_DEBUG, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
+		ns->base[index] = base;
+		ns->len[index] = extent;
+	}
 	return ns->extents - 1;
 }
 
@@ -245,12 +260,6 @@ int isi_find_obj_index(struct objtype *target)
 	}
 	return -1;
 }
-
-#define NSY_OBJ 1
-#define NSY_MEM 2
-#define NSY_MEMVALID 4
-#define NSY_SYNCOBJ 8
-#define NSY_SYNCMEM 16
 
 void isi_run_sync(struct timespec crun)
 {

@@ -95,6 +95,7 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 	mem = (struct memory64x16*)info->mem;
 	switch(msg[0]) {
 	case 0:
+		if(dsp->dspmem == msg[1]) break;
 		dsp->dspmem = msg[1];
 		if(dsp->dspmem) {
 			isi_add_devmemsync(&info->id, &mem->id, 50000000);
@@ -102,16 +103,19 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 		}
 		break;
 	case 1: // Map Font
+		if(dsp->fontmem == msg[1]) break;
 		dsp->fontmem = msg[1];
 		isilog(L_DEBUG, "NYALEM: Font set to %04x \n", dsp->fontmem);
 		isi_set_devmemsync_extent(&info->id, &mem->id, 1, dsp->fontmem, 256);
 		break;
 	case 2: // Map Palette
+		if(dsp->palmem == msg[1]) break;
 		dsp->palmem = msg[1];
 		isilog(L_DEBUG, "NYALEM: Palette set to %04x \n", dsp->palmem);
 		isi_set_devmemsync_extent(&info->id, &mem->id, 2, dsp->palmem, 16);
 		break;
 	case 3: // Set border
+		if(dsp->border == msg[1]) break;
 		dsp->border = msg[1];
 		isi_resync_dev(&info->id);
 		break;
