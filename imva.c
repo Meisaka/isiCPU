@@ -19,13 +19,15 @@ ISIREFLECT(struct imva_rvstate,
 	ISIR(imva_rvstate, uint16_t, ovmode)
 )
 
-static int imva_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int imva_Init(struct isiInfo *info);
 struct isidcpudev imva_Meta = {0x0538,0x75FEA113,0x59EA5742};
 struct isiConstruct imva_Con = {
-	0x5000, "imva", "IMVA Display",
-	NULL, imva_Init, NULL,
-	&ISIREFNAME(struct imva_rvstate), NULL,
-	&imva_Meta
+	.objtype = 0x5000,
+	.name = "imva",
+	.desc = "IMVA Display",
+	.Init = imva_Init,
+	.rvproto = &ISIREFNAME(struct imva_rvstate),
+	.meta = &imva_Meta
 };
 void imva_Register()
 {
@@ -102,7 +104,7 @@ int imva_interrupt(struct isiInfo *info, uint16_t *msg)
 	return 0;
 }
 
-static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
+static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) {
 	case 0: return imva_reset(info);
@@ -118,7 +120,7 @@ static struct isiInfoCalls imvaCalls = {
 	.Reset = imva_reset
 };
 
-static int imva_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
+static int imva_Init(struct isiInfo *info)
 {
 	info->c = &imvaCalls;
 	return 0;

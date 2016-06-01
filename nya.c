@@ -58,13 +58,15 @@ ISIREFLECT(struct Nya_LEM_rv,
 	ISIR(Nya_LEM_rv, unsigned short, version)
 )
 
-static int Nya_LEM_Init(struct isiInfo *info, const uint8_t *cfg, size_t);
+static int Nya_LEM_Init(struct isiInfo *info);
 static struct isidcpudev Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
 static struct isiConstruct Nya_LEM_Con = {
-	ISIT_HARDWARE, "nya_lem", "Nya LEM 1802",
-	NULL, Nya_LEM_Init, NULL,
-	&ISIREFNAME(struct Nya_LEM_rv), NULL,
-	&Nya_LEM_Meta
+	.objtype = ISIT_HARDWARE,
+	.name = "nya_lem",
+	.desc = "Nya LEM 1802",
+	.Init = Nya_LEM_Init,
+	.rvproto = &ISIREFNAME(struct Nya_LEM_rv),
+	.meta = &Nya_LEM_Meta
 };
 void Nya_LEM_Register()
 {
@@ -127,8 +129,9 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 	return 0;
 }
 
-static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
+static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, int len, struct timespec mtime)
 {
+	if(len < 10) return -1;
 	switch(msg[0]) {
 	case 0: return Nya_LEM_Reset(info);
 	case 1: return 0;
@@ -143,7 +146,7 @@ static struct isiInfoCalls Nya_LEMCalls = {
 	.Reset = Nya_LEM_Reset
 };
 
-static int Nya_LEM_Init(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
+static int Nya_LEM_Init(struct isiInfo *info)
 {
 	info->c = &Nya_LEMCalls;
 	return 0;

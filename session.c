@@ -431,7 +431,7 @@ readagain:
 		}
 		if(info->id.objtype >= 0x2000) {
 			if(info->c->MsgIn) {
-				info->c->MsgIn(info, info->updev, (uint16_t*)(pm+2), mtime);
+				info->c->MsgIn(info, info->updev, (uint16_t*)(pm+2), 10, mtime);
 			}
 		}
 	}

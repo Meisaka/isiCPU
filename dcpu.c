@@ -81,15 +81,16 @@ static inline uint16_t DCPU_derefB(int, struct DCPU *, isiram16);
 static int DCPU_setonfire(struct DCPU *);
 static inline void DCPU_skipref(int, struct DCPU *);
 static int DCPU_reset(struct isiInfo *);
-static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, uint16_t *, struct timespec);
+static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, uint16_t *, int, struct timespec);
 static int DCPU_run(struct isiInfo *, struct timespec);
-static int DCPU_init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int DCPU_init(struct isiInfo *info);
 
 static struct isiConstruct DCPU_Con = {
-	ISIT_DCPU, "dcpu", "DCPU-16 1.7",
-	0, DCPU_init, 0,
-	&ISIREFNAME(struct DCPU), NULL,
-	0
+	.objtype = ISIT_DCPU,
+	.name = "dcpu",
+	.desc = "DCPU-16 1.7",
+	.Init = DCPU_init,
+	.rvproto = &ISIREFNAME(struct DCPU),
 };
 
 void DCPU_Register()
@@ -123,7 +124,7 @@ static struct isiInfoCalls DCPUCalls = {
 	.Attach = DCPU_Attach
 };
 
-static int DCPU_init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int DCPU_init(struct isiInfo *info)
 {
 	isi_setrate((struct isiCPUInfo *)info, 100000); // 100kHz
 	info->c = &DCPUCalls;
@@ -150,7 +151,7 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->msg = 0;
 	if((info->dndev)
 		&& (info->dndev->c->MsgIn)
-		&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
+		&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun) == 0)) {
 		pr->hwcount = pr->dai;
 	}
 	return 0;
@@ -234,7 +235,7 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 	}
 }
 
-static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
 	if(pr->IA) {
@@ -573,7 +574,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				pr->dai = alu1.u;
 				if((info->dndev)
 					&& (info->dndev->c->MsgIn)
-					&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun) == 0)) {
+					&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun) == 0)) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -589,7 +590,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				pr->dai = alu1.u;
 				if((info->dndev)
 					&& (info->dndev->c->MsgIn)
-					&& (op = info->dndev->c->MsgIn(info->dndev, info, &pr->msg, info->nrun))) {
+					&& (op = info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;

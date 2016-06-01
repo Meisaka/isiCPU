@@ -3,12 +3,12 @@
 #include <string.h>
 #define DEBUG_DCPUHW 1
 
-static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int HWM_Init(struct isiInfo *info);
 static struct isiConstruct DCPUBUS_Con = {
-	ISIT_BUSDEV, "dcpu_hwbus", "DCPU Hardware backplane",
-	0, HWM_Init, 0,
-	NULL, NULL,
-	0
+	.objtype = ISIT_BUSDEV,
+	.name = "dcpu_hwbus",
+	.desc = "DCPU Hardware backplane",
+	.Init = HWM_Init,
 };
 void DCPUBUS_Register()
 {
@@ -56,7 +56,7 @@ static int HWM_Attached(struct isiInfo *info, struct isiInfo *dev)
 	return 0;
 }
 
-static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	int r;
 	r = 1;
@@ -77,7 +77,7 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 			if(dev->c->Reset) dev->c->Reset(dev);
 			if(dev->c->MsgIn) {
 				isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name, h);
-				dev->c->MsgIn(dev, src, msg, mtime);
+				dev->c->MsgIn(dev, src, msg, len, mtime);
 			}
 		}
 		return 0;
@@ -98,7 +98,7 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 			r = 0;
 		}
 		if(dev->c->MsgIn) {
-			r = dev->c->MsgIn(dev, src, msg, mtime);
+			r = dev->c->MsgIn(dev, src, msg, len, mtime);
 		}
 		return r;
 	default:
@@ -131,7 +131,7 @@ static struct isiInfoCalls HWMCalls = {
 	.Delete = HWM_FreeAll
 };
 
-static int HWM_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int HWM_Init(struct isiInfo *info)
 {
 	if(!info) return -1;
 	isilog(L_DEBUG, "hwm: init bus\n");

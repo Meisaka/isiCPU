@@ -241,7 +241,7 @@ static int isi_write_disk(struct isiInfo *info)
 	return -1;
 }
 
-static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	if(info->id.objtype != ISIT_DISK) return -1;
 	struct isiDisk *disk = (struct isiDisk *)info;
@@ -330,10 +330,13 @@ static int disk_init(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 }
 static char Disk_Meta[] = {0,0,0,0,0,0,0,0,0,0,0,0};
 static struct isiConstruct Disk_Con = {
-	ISIT_DISK, "disk", "Disk media",
-	0, disk_init, 0,
-	&ISIREFNAME(struct disk_rvstate), &ISIREFNAME(struct disk_svstate),
-	&Disk_Meta
+	.objtype = ISIT_DISK,
+	.name = "disk",
+	.desc = "Disk media",
+	.New = disk_init,
+	.rvproto = &ISIREFNAME(struct disk_rvstate),
+	.svproto = &ISIREFNAME(struct disk_svstate),
+	.meta = &Disk_Meta
 };
 void Disk_Register()
 {

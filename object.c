@@ -246,7 +246,7 @@ int isi_create_object(int objtype, struct objtype **out)
 }
 
 static struct isiInfoCalls emptyobject = { 0, };
-int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg)
+int isi_premake_object(int objtype, struct isiConstruct **outcon, struct objtype **out)
 {
 	uint32_t x;
 	int i;
@@ -260,6 +260,7 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 		}
 	}
 	if(!con) return ISIERR_NOTFOUND;
+	*outcon = con;
 	struct objtype *ndev;
 	i = isi_create_object(objtype, &ndev);
 	if(i) return i;
@@ -273,7 +274,7 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 	info->svproto = con->svproto;
 	info->c = &emptyobject;
 	if(con->PreInit) {
-		rs = con->PreInit(info, cfg, lcfg);
+		rs = con->PreInit(info);
 		if(rs) {
 			isi_delete_object(ndev);
 			*out = 0;
@@ -282,13 +283,13 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 	}
 	if(objtype > 0x2f00 && con->QuerySize) {
 		size_t sz = 0;
-		con->QuerySize(0, cfg, lcfg, &sz);
+		con->QuerySize(0, &sz);
 		if(sz) {
 			info->rvstate = malloc(sz);
 			memset(info->rvstate, 0, sz);
 		}
 		sz = 0;
-		con->QuerySize(1, cfg, lcfg, &sz);
+		con->QuerySize(1, &sz);
 		if(sz) {
 			info->svstate = malloc(sz);
 			memset(info->svstate, 0, sz);
@@ -304,7 +305,30 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 		}
 	}
 	if(con->Init) {
-		rs = con->Init(info, cfg, lcfg);
+		rs = con->Init(info);
+		if(rs) {
+			isi_delete_object(ndev);
+			*out = 0;
+			return rs;
+		}
+	}
+	*out = ndev;
+	return 0;
+}
+
+int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg)
+{
+	int rs = 0;
+	struct objtype *ndev;
+	struct isiConstruct *con = NULL;
+	rs = isi_premake_object(objtype, &con, &ndev);
+	if(rs) return rs;
+	if(objtype < 0x2f00) {
+		*out = ndev;
+		return 0;
+	}
+	if(con->New) {
+		rs = con->New((struct isiInfo *)ndev, cfg, lcfg);
 		if(rs) {
 			isi_delete_object(ndev);
 			*out = 0;

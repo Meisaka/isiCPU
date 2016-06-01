@@ -25,9 +25,10 @@ struct objtype {
 };
 
 struct sescommandset {
-	uint16_t cmd;
-	uint16_t stype;
+	uint32_t cmd;
+	uint32_t stype;
 	uint32_t id;
+	uint32_t offset;
 };
 
 typedef int (*isi_ses_handle)(struct isiSession *ses, struct timespec mtime);
@@ -80,20 +81,22 @@ struct isiNetSync {
 	uint32_t len[4];
 };
 
-typedef int (*isi_init)(struct isiInfo *, const uint8_t *, size_t);
-typedef int (*isi_size)(int, const uint8_t *, size_t, size_t *);
+typedef int (*isi_init_call)(struct isiInfo *);
+typedef int (*isi_size_call)(int, size_t *);
+typedef int (*isi_new_call)(struct isiInfo *, const uint8_t *, size_t);
 typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
 typedef int (*isi_control_call)(struct isiInfo *);
 typedef int (*isi_attach_call)(struct isiInfo *to, struct isiInfo *dev);
-typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, struct timespec mtime);
+typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, int, struct timespec mtime);
 
 struct isiConstruct {
 	uint32_t objtype;
 	const char * name;
 	const char * desc;
-	isi_init PreInit;
-	isi_init Init;
-	isi_size QuerySize;
+	isi_init_call PreInit;
+	isi_init_call Init;
+	isi_size_call QuerySize;
+	isi_new_call New;
 	struct isiReflection *rvproto;
 	struct isiReflection *svproto;
 	void * meta;

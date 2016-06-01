@@ -39,13 +39,16 @@ ISIREFLECT(struct Disk_M35FD_svstate,
 	ISIR(Disk_M35FD_svstate, uint16_t, svbuf)
 )
 
-static int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int Disk_M35FD_Init(struct isiInfo *info);
 static struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
 static struct isiConstruct Disk_M35FD_Con = {
-	ISIT_HARDWARE, "mack_35fd", "Mackapar M35FD",
-	NULL, Disk_M35FD_Init, NULL,
-	&ISIREFNAME(struct Disk_M35FD_rvstate), &ISIREFNAME(struct Disk_M35FD_svstate),
-	&Disk_M35FD_Meta
+	.objtype = ISIT_HARDWARE,
+	.name = "mack_35fd",
+	.desc = "Mackapar M35FD",
+	.Init = Disk_M35FD_Init,
+	.rvproto = &ISIREFNAME(struct Disk_M35FD_rvstate),
+	.svproto = &ISIREFNAME(struct Disk_M35FD_svstate),
+	.meta = &Disk_M35FD_Meta
 };
 void Disk_M35FD_Register()
 {
@@ -76,12 +79,12 @@ static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	if(dev->iword) {
 		if(info->hostcpu && info->hostcpu->c->MsgIn) {
-			info->hostcpu->c->MsgIn(info->hostcpu, info, &dev->iword, *mtime);
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &dev->iword, 1, *mtime);
 		}
 	}
 }
 
-static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
@@ -178,7 +181,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 					dr += (512 * (dev->seeksector & 3));
 					dseek.mcode = 0x0020;
 					dseek.block = dev->seeksector >> 2;
-					info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, crun);
+					info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
 					if(dev->oper == 1) {
 						uint16_t mc;
 						mc = dev->rwaddr;
@@ -208,13 +211,15 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */
 	case 0: return 0; /* CPU finished reset */
 	case 1: return 0; /* HWQ executed */
-	case 2: return Disk_M35FD_HWI(info, src, msg+2, mtime); /* HWI executed */
+	case 2:
+		if(len < 10) return -1;
+		return Disk_M35FD_HWI(info, src, msg+2, len - 2, mtime); /* HWI executed */
 	default: break;
 	}
 	return 1;
@@ -227,7 +232,7 @@ static struct isiInfoCalls Disk_M35FDCalls = {
 	.QueryAttach = Disk_M35FD_QAttach
 };
 
-static int Disk_M35FD_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Disk_M35FD_Init(struct isiInfo *info)
 {
 	info->c = &Disk_M35FDCalls;
 	return 0;

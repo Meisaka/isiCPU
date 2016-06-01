@@ -16,6 +16,7 @@ extern struct isiConTable allcon;
 extern struct isiObjTable allobj;
 int isi_create_object(int objtype, struct objtype **out);
 static int redis_handle_rd(struct isiSession *ses, struct timespec mtime);
+int isi_premake_object(int objtype, struct isiConstruct **outcon, struct objtype **out);
 
 int redis_make_session(struct sockaddr *ripa, socklen_t rin)
 {
@@ -135,6 +136,14 @@ void isi_redis_test()
 		}
 		u++;
 	}
+}
+
+int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t tid)
+{
+	struct isiConstruct *con = 0;
+	struct objtype *obj;
+	int r = isi_premake_object(cid, &con, &obj);
+	return r;
 }
 
 static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)

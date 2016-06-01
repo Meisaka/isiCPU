@@ -17,13 +17,15 @@ ISIREFLECT(struct Clock_rvstate,
 	ISIR(Clock_rvstate, uint16_t, ctime)
 )
 
-static int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int Clock_Init(struct isiInfo *info);
 static struct isidcpudev Clock_Meta = {0x0001,0x12d0b402,MF_ECIV};
 static struct isiConstruct Clock_Con = {
-	ISIT_HARDWARE, "clock", "Generic Clock",
-	NULL, Clock_Init, NULL,
-	&ISIREFNAME(struct Clock_rvstate), NULL,
-	&Clock_Meta
+	.objtype = ISIT_HARDWARE,
+	.name = "clock",
+	.desc = "Generic Clock",
+	.Init = Clock_Init,
+	.rvproto = &ISIREFNAME(struct Clock_rvstate),
+	.meta = &Clock_Meta
 };
 void Clock_Register()
 {
@@ -41,7 +43,7 @@ static int Clock_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec crun)
 {
 	struct Clock_rvstate *clk = (struct Clock_rvstate*)info->rvstate;
 	switch(msg[0]) {
@@ -75,7 +77,7 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 		clk->raccum = 0;
 		clk->ctime++;
 		if(clk->iword && info->hostcpu && info->hostcpu->c->MsgIn) {
-			info->hostcpu->c->MsgIn(info->hostcpu, info, &clk->iword, info->nrun);
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &clk->iword, 1, info->nrun);
 		}
 	}
 	if(clk->accum++ < 15) { /* magically sync the 60Hz base clock to 1 second */
@@ -87,12 +89,14 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) {
 	case 0: return 0;
 	case 1: return 0;
-	case 2: return Clock_HWI(info, src, msg+2, mtime);
+	case 2:
+		if(len < 10) return -1;
+		return Clock_HWI(info, src, msg+2, len - 2, mtime);
 	default: break;
 	}
 	return 1;
@@ -104,7 +108,7 @@ static struct isiInfoCalls ClockCalls = {
 	.RunCycles = Clock_Tick
 };
 
-static int Clock_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Clock_Init(struct isiInfo *info)
 {
 	info->c = &ClockCalls;
 	return 0;

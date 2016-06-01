@@ -14,13 +14,16 @@ ISIREFLECT(struct LKBD,
 	ISIR(LKBD, uint8_t, keydown)
 )
 
-static int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
+static int Keyboard_Init(struct isiInfo *info);
 static struct isidcpudev Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
 static struct isiConstruct Keyboard_Con = {
-	ISIT_HARDWARE, "keyboard", "Generic Keyboard",
-	NULL, Keyboard_Init, NULL,
-	&ISIREFNAME(struct LKBD), NULL,
-	&Keyboard_Meta
+	.objtype = ISIT_HARDWARE,
+	.name = "keyboard",
+	.desc = "Generic Keyboard",
+	.Init = Keyboard_Init,
+	.rvproto = &ISIREFNAME(struct LKBD),
+	.svproto = NULL,
+	.meta = &Keyboard_Meta
 };
 void Keyboard_Register()
 {
@@ -82,7 +85,7 @@ static void Keyboard_KUp(struct LKBD *kb, int kc)
 	}
 }
 
-static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec mtime)
+static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct LKBD* kyb;
 	kyb = (struct LKBD*)info->rvstate;
@@ -94,7 +97,7 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 		Keyboard_KDown(kyb, msg[1]);
 		if(kyb->imsg) {
 			if(info->hostcpu && info->hostcpu->c->MsgIn) {
-				info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
+				info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, len, mtime);
 			} else {
 				isilog(L_DEBUG, "Keyboard Interrupt dropped!\n");
 			}
@@ -103,7 +106,7 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 	case 0x20E8:
 		Keyboard_KUp(kyb, msg[1]);
 		if(kyb->imsg && info->hostcpu && info->hostcpu->c->MsgIn) {
-			info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, mtime);
+			info->hostcpu->c->MsgIn(info->hostcpu, info, &kyb->imsg, len, mtime);
 		}
 		return 0;
 	default:
@@ -132,7 +135,7 @@ static struct isiInfoCalls KeyboardCalls = {
 	.MsgIn = Keyboard_MsgIn
 };
 
-static int Keyboard_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+static int Keyboard_Init(struct isiInfo *info)
 {
 	info->c = &KeyboardCalls;
 	return 0;

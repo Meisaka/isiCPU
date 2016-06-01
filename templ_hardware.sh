@@ -17,20 +17,27 @@ struct ${NAME}_svstate {
 ISIREFLECT(struct ${NAME}_svstate,
 )
 /* SIZE call for variable size structs */
-int ${NAME}_SIZE(int t, const char *cfg)
+int ${NAME}_SIZE(int t, size_t *sz)
 {
-	if(t == 0) return sizeof(struct ${NAME}_rvstate);
+	if(t == 0) return *sz = sizeof(struct ${NAME}_rvstate);
 	if(t == 1) return sizeof(struct ${NAME}_svstate);
 	return 0;
 }
-static int ${NAME}_Init(struct isiInfo *info, const uint8_t *cfg, size_t lcfg);
-/* static int ${NAME}_PreInit(struct isiInfo *info, const uint8_t *cfg, size_t lcfg); */
+static int ${NAME}_Init(struct isiInfo *info);
+/* static int ${NAME}_PreInit(struct isiInfo *info); */
+static int ${NAME}_New(struct isiInfo *info, const uint8_t * cfg, size_t lcfg);
 struct isidcpudev ${NAME}_Meta = {0x0000,0x00000000,MF_ECIV};
 struct isiConstruct ${NAME}_Con = {
-	0x5000, "${NAME}", "Default_Template_for_${NAME}",
-	NULL, ${NAME}_Init, ${NAME}_SIZE,
-	&ISIREFNAME(struct ${NAME}_rvstate), &ISIREFNAME(struct ${NAME}_svstate),
-	&${NAME}_Meta
+	.objtype = 0x5000,
+	.name = "${NAME}",
+	.desc = "Default_Template_for_${NAME}",
+	.PreInit = NULL, /* ${NAME}_PreInit, */
+	.Init = ${NAME}_Init,
+	.New = ${NAME}_New,
+	.QuerySize = ${NAME}_SIZE,
+	.rvproto = &ISIREFNAME(struct ${NAME}_rvstate),
+	.svproto = &ISIREFNAME(struct ${NAME}_svstate),
+	.meta = &${NAME}_Meta
 };
 void ${NAME}_Register()
 {
@@ -72,7 +79,7 @@ static int ${NAME}_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */
@@ -84,11 +91,20 @@ static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *ms
 	return 1;
 }
 
-static int ${NAME}_Init(struct isiInfo *info, const char *cfg)
+static struct isiInfoCalls ${NAME}_Calls = {
+	.Reset = ${NAME}_Reset; /* power on reset */
+	.MsgIn = ${NAME}_MsgIn; /* message from CPU or network */
+	.RunCycles = ${NAME}_Tick; /* scheduled runtime */
+};
+
+static int ${NAME}_Init(struct isiInfo *info)
 {
-	info->Reset = ${NAME}_Reset; /* power on reset */
-	info->MsgIn = ${NAME}_MsgIn; /* message from CPU or network */
-	info->RunCycles = ${NAME}_Tick; /* scheduled runtime */
+	info->c = &${NAME}_Calls;
+	return 0;
+}
+
+static int ${NAME}_New(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
+{
 	return 0;
 }
 
