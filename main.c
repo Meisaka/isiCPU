@@ -172,7 +172,7 @@ int isi_addcpu()
 	struct isiCPUInfo *cpu;
 	isiram16 nmem;
 	isi_make_object(isi_lookup_name("dcpu"), (struct objtype**)&cpu, 0, 0);
-	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_STEP) : 0;
+	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_TRACE | ISICTL_STEP) : 0;
 	isi_make_object(isi_lookup_name("memory_16x64k"), (struct objtype**)&nmem, 0, 0);
 	isi_attach((struct isiInfo*)cpu, (struct isiInfo*)nmem);
 	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
@@ -236,25 +236,54 @@ void isi_redis_test();
 int handle_stdin(struct isiSession *ses, struct timespec mtime)
 {
 	int i;
-	char cc[10];
-	char ccv[10];
-	i = read(ses->sfd, cc, 10);
+	char cc[16];
+	i = read(ses->sfd, cc, 16);
 	if(i < 1) return 0;
+	struct isiCPUInfo *cpu = NULL;
+	if(allcpu.count) {
+		cpu = (struct isiCPUInfo*)allcpu.table[0];
+	}
 	switch(cc[0]) {
 	case 10:
-		if(allcpu.count && ((struct isiCPUInfo*)allcpu.table[0])->ctl & ISICTL_DEBUG) {
-			((struct isiCPUInfo*)allcpu.table[0])->ctl |= ISICTL_STEPE;
+		if(cpu && cpu->ctl & ISICTL_DEBUG) {
+			cpu->ctl |= ISICTL_STEPE;
+		}
+		break;
+	case 'c':
+		if(cpu && cpu->ctl & ISICTL_DEBUG) {
+			cpu->ctl &= ~(ISICTL_STEP | ((cpu->ctl & ISICTL_TRACEC) ? 0:ISICTL_TRACE));
+			cpu->ctl |= ISICTL_STEPE;
+		}
+		break;
+	case 'f':
+		if(!cpu) break;
+		{
+			uint32_t t = 0;
+			uint32_t ti = 0;
+			int k;
+			for(k = 1; k < i; k++) {
+				ti = cc[k] - '0';
+				if(ti < 10) {
+					t *= 10;
+					t += ti;
+				}
+			}
+			if(t) {
+				cpu->ctl &= ~(ISICTL_STEP | ISICTL_STEPE | ((cpu->ctl & ISICTL_TRACEC) ? 0:ISICTL_TRACE));
+				cpu->ctl |= ISICTL_RUNFOR;
+				cpu->rcycl = t;
+			}
 		}
 		break;
 	case 'r':
-		i = read(ses->sfd, ccv, 5);
+		if(!cpu) break;
 		if(i < 5) break;
 		{
 			uint32_t t = 0;
 			uint32_t ti = 0;
 			int k;
-			for(k = 0; k < 4; k++) {
-				ti = ccv[k] - '0';
+			for(k = 1; k < 5; k++) {
+				ti = cc[k] - '0';
 				if(ti > 9) {
 					ti -= ('A'-'0'-10);
 				}
@@ -263,17 +292,39 @@ int handle_stdin(struct isiSession *ses, struct timespec mtime)
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			if(allcpu.count) {
-				ti = ((isiram16)allcpu.table[0]->mem)->ram[t];
-			} else {
-				t = ti = 0;
+			ti = ((isiram16)allcpu.table[0]->mem)->ram[t];
+			fprintf(stderr, "debug: read %04x:%04x\n", t, ti);
+		}
+		break;
+	case 'b':
+		if(!cpu) break;
+		if(i < 5) break;
+		{
+			uint32_t t = 0;
+			uint32_t ti = 0;
+			int k;
+			for(k = 1; k < 5; k++) {
+				ti = cc[k] - '0';
+				if(ti > 9) {
+					ti -= ('A'-'0'-10);
+				}
+				if(ti > 15) {
+					ti -= 'a' - 'A';
+				}
+				t = (t << 4) | (ti & 15);
 			}
-			fprintf(stderr, "READ %04x:%04x\n", t, ti);
+			isi_cpu_togglebrk((isiram16)allcpu.table[0]->mem, t);
+			k = isi_cpu_isbrk((isiram16)allcpu.table[0]->mem, t);
+			fprintf(stderr, "debug: Break point %sed at %04x\n", k?"enabl":"disabl",t);
 		}
 		break;
 	case 'x':
 		haltnow = 1;
-		i = read(ses->sfd, ccv, 1);
+		break;
+	case 't':
+		if(!cpu) break;
+		cpu->ctl ^= ISICTL_TRACEC;
+		fprintf(stderr, "debug: trace on continue %sed\n", (cpu->ctl & ISICTL_TRACEC)?"enabl":"disabl");
 		break;
 	case 'n':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
@@ -523,7 +574,7 @@ int main(int argc, char**argv, char**envp)
 				ccpi->c->RunCycles(ccpi, CRun);
 				//TODO some hardware may need to work at the same time
 				lucycles += ccpu->cycl;
-				if(rqrun && (ccpu->ctl & ISICTL_DEBUG) && (ccpu->cycl)) {
+				if(rqrun && (ccpu->ctl & ISICTL_TRACE) && (ccpu->cycl)) {
 					showdiag_dcpu(ccpi, 1);
 				}
 				ccpu->cycl = 0;
@@ -543,10 +594,10 @@ int main(int argc, char**argv, char**envp)
 
 		fetchtime(&CRun);
 		if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
-			if(rqrun) { // interactive diag
+			if(rqrun && !flagdbg) { // interactive diag
 			double clkdelta;
 			float clkrate;
-			if(!flagdbg && allcpu.count) showdiag_dcpu(allcpu.table[0], 0);
+			if(allcpu.count) showdiag_dcpu(allcpu.table[0], 0);
 			clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
 			clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
 			if(!lucpus) lucpus = 1;
@@ -555,7 +606,7 @@ int main(int argc, char**argv, char**envp)
 					clkdelta, numberofcpus, clkrate, gccq,
 					sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
 					);
-			if(!flagdbg && allcpu.count) showdiag_up(4);
+			if(allcpu.count) showdiag_up(4);
 			}
 			fetchtime(&LTUTime);
 			if(gccq >= sts.cpusched / numberofcpus ) {

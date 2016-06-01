@@ -62,3 +62,19 @@ The current build method is simple.
 
     make
 
+
+Debugger
+-------
+
+isiCPU includes a built-in debugger that is enabled with `-D` on the command line.
+Some of these features work with debugging disabled.
+
+##### Interactive Console Commands
+ - x : exit
+ - <enter> : run 1 instruction
+ - c : continue execution
+ - bHHHH : toggle break point at HHHH (must be 4 hex char address)
+ - rHHHH : read memory at HHHH (must be 4 hex char address)
+ - f<num> : run for decimal num of cycles
+ - t : toggle trace on execute
+

@@ -169,6 +169,7 @@ struct isiCPUInfo SUBCLASS(isiInfo) {
 	size_t runrate;
 	size_t itvl;
 	size_t cycl;
+	size_t rcycl;
 };
 
 typedef struct memory64x16 {
@@ -181,12 +182,15 @@ typedef struct memory64x16 {
 #define ISI_RAMCTL_DELTA (1<<16)
 #define ISI_RAMCTL_SYNC (1<<17)
 #define ISI_RAMCTL_RDONLY (1<<18)
+#define ISI_RAMCTL_BREAK (1<<19)
 #define ISI_RAMINFO_SCAN 1
 
 uint16_t isi_cpu_rdmem(isiram16 ram, uint16_t a);
 void isi_cpu_wrmem(isiram16 ram, uint16_t a, uint16_t v);
 uint16_t isi_hw_rdmem(isiram16 ram, uint16_t a);
 void isi_hw_wrmem(isiram16 ram, uint16_t a, uint16_t v);
+int isi_cpu_isbrk(isiram16 ram, uint16_t a);
+void isi_cpu_togglebrk(isiram16 ram, uint16_t a);
 
 /* attach dev to item */
 int isi_attach(struct isiInfo *item, struct isiInfo *dev);
@@ -267,6 +271,9 @@ int isi_remove_sync(struct objtype *target);
 #define ISICTL_DEBUG  ( 1 << 0 )
 #define ISICTL_STEP   ( 1 << 1 )
 #define ISICTL_STEPE  ( 1 << 2 )
+#define ISICTL_TRACE  ( 1 << 3 )
+#define ISICTL_RUNFOR ( 1 << 4 )
+#define ISICTL_TRACEC ( 1 << 5 )
 
 #define ISIT_NONE      0
 #define ISIT_SESSION   0x1000

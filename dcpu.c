@@ -498,6 +498,15 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 	if(pr->MODE == BURNING) {
 		cycl += 3;
 	}
+	if(l_info->ctl & ISICTL_DEBUG) {
+		if(!(l_info->ctl & ISICTL_STEP) && !(l_info->ctl & ISICTL_STEPE) && isi_cpu_isbrk(ram, pr->PC)) {
+			l_info->ctl |= ISICTL_STEP | ISICTL_TRACE;
+			isilog(L_DEBUG, "dcpu: break point at %04x\n", pr->PC);
+			showdiag_dcpu(info, 1);
+			break;
+		}
+		l_info->ctl &= ~ISICTL_STEPE;
+	}
 
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->MODE ^= DCPUMODE_EXTINT;
@@ -820,6 +829,19 @@ ecpu:
 	cycl += pr->cycl;
 	pr->cycl = 0;
 	if(!cycl) cycl = 1;
+	if(l_info->ctl & ISICTL_DEBUG) {
+		if(l_info->ctl & ISICTL_RUNFOR) {
+			if(l_info->rcycl > cycl) {
+				l_info->rcycl -= cycl;
+			} else {
+				l_info->ctl &= ~ISICTL_RUNFOR;
+				l_info->ctl |= ISICTL_STEP | ISICTL_TRACE;
+				ccq = 0;
+				showdiag_dcpu(info, 1);
+				break;
+			}
+		}
+	}
 	if(ccq < cycl) { // used too many
 		ccq = 0;
 	} else {

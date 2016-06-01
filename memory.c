@@ -18,6 +18,16 @@ uint16_t isi_cpu_rdmem(isiram16 ram, uint16_t a)
 	return ram->ram[a];
 }
 
+int isi_cpu_isbrk(isiram16 ram, uint16_t a)
+{
+	return (ram->ctl[a] & ISI_RAMCTL_BREAK) ? 1:0;
+}
+
+void isi_cpu_togglebrk(isiram16 ram, uint16_t a)
+{
+	ram->ctl[a] ^= ISI_RAMCTL_BREAK;
+}
+
 void isi_cpu_wrmem(isiram16 ram, uint16_t a, uint16_t v)
 {
 	if(!(ram->ctl[a] & ISI_RAMCTL_RDONLY)) ram->ram[a] = v;
