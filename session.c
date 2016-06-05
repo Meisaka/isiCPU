@@ -253,7 +253,19 @@ readagain:
 	}
 	/* handle message here */
 	switch(mc) {
+	case ISIM_R_PING: /* ping response */
+		/* ignore these, the session is alive */
+		break;
 	case ISIM_PING: /* keepalive/ping */
+	{
+		size_t i;
+		if(l > 16) l = 16;
+		for(i = 0; i < (l>>2); i++) {
+			pr[1+i] = pm[1+i];
+		}
+		pr[0] = ISIMSG(R_PING, 0, l);
+		session_write_msg(ses);
+	}
 		break;
 	case ISIM_GETOBJ: /* get all accessable objects */
 	{

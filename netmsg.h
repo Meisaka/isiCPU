@@ -2,6 +2,7 @@
 #define ISI_NETMSG_H
 
 #define ISIM_KEEPALIVE  (0x000)
+#define ISIM_R_PING     (0x001)
 #define ISIM_PING       (0x010)
 #define ISIM_GETOBJ     (0x011)
 #define ISIM_SYNCALL    (0x012)

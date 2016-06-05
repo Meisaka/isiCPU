@@ -29,7 +29,8 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | code  | min length | max length | model | description / psudo format |other note
 |------:|-----------:|-----------:|:-----:|:---------------------------|:------
 | 0x000 |     0 |    0 |   Any    | keepalive
-| 0x010 |     0 |   16 |   Any    | ping
+| 0x001 |     0 |   16 |  R>Any   | ping / echo response
+| 0x010 |     0 |   16 |   Any    | ping / echo | message payload is echoed back.
 | 0x011 |     0 |    0 |   C>S    | request accessable objects
 | 0x012 |     0 |    0 |   C>S    | request sync all objects
 | 0x013 |     0 |    0 |   C>S    | request classes
