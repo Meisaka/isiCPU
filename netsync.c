@@ -157,10 +157,15 @@ int isi_add_devsync(struct objtype *target, size_t rate)
 		ns->target.id = target->id;
 		ns->target.objtype = target->objtype;
 		isi_synctable_add(ns);
+		ns->synctype = ISIN_SYNC_DEVR;
+		ns->rate = rate;
+		ns->ctl = 0;
+		isilog(L_DEBUG, "netsync: adding dev sync, rate=%ld \n", rate);
+	} else if(ns->rate != rate) {
+		ns->rate = rate;
+		isilog(L_DEBUG, "netsync: resetting memdev sync rate=%ld \n", rate);
 	}
-	ns->synctype = ISIN_SYNC_DEVR;
-	ns->rate = rate;
-	ns->ctl = 0;
+	ns->ctl &= ~NSY_SYNCOBJ;
 	return 0;
 }
 
@@ -170,7 +175,7 @@ int isi_resync_dev(struct objtype *target)
 	if(!isi_find_sync(target, &ns)) {
 		return -1;
 	}
-	ns->ctl &= ~8;
+	ns->ctl &= ~NSY_SYNCOBJ;
 	return 0;
 }
 
@@ -307,7 +312,7 @@ void isi_run_sync(struct timespec crun)
 				if(x < 0) break;
 				ns->memobj_index = x;
 				ns->ctl |= NSY_MEM;
-				isilog(L_DEBUG, "netsync: adding mem index %d\n", ns->ctl);
+				isilog(L_DEBUG, "netsync: adding mem index %x\n", ns->ctl);
 			}
 			if((ns->ctl & NSY_MEM)) {
 				mem = (isiram16)allobj.table[ns->memobj_index];
@@ -341,7 +346,7 @@ void isi_run_sync(struct timespec crun)
 				if(x < 0) break;
 				ns->target_index = x;
 				ns->ctl |= NSY_OBJ;
-				isilog(L_DEBUG, "netsync: adding dev index %d\n", ns->ctl);
+				isilog(L_DEBUG, "netsync: adding dev index %x\n", ns->ctl);
 			}
 			if((ns->ctl & NSY_OBJ)) dev = (struct isiInfo *)allobj.table[ns->target_index];
 			break;
@@ -427,6 +432,9 @@ void isi_run_sync(struct timespec crun)
 					ns->ctl &= ~NSY_SYNCMEM;
 				}
 			}
+		case ISIN_SYNC_DEVR:
+		case ISIN_SYNC_DEVV:
+		case ISIN_SYNC_DEVRV:
 			if((ns->ctl & NSY_OBJ) && !(ns->ctl & NSY_SYNCOBJ)) {
 				ns->ctl |= NSY_SYNCOBJ;
 				struct isiReflection *rfl;
@@ -457,10 +465,6 @@ void isi_run_sync(struct timespec crun)
 					}
 				}
 			}
-			break;
-		case ISIN_SYNC_DEVR:
-		case ISIN_SYNC_DEVV:
-		case ISIN_SYNC_DEVRV:
 			break;
 		}
 		isi_addtime(&ns->nrun, ns->rate);

@@ -81,6 +81,7 @@ static int Nya_LEM_Reset(struct isiInfo *info)
 	dsp->dspmem = 0;
 	dsp->fontmem = 0;
 	dsp->version = 0x1802;
+	isi_resync_dev(&info->id);
 	return 0;
 }
 

@@ -182,6 +182,9 @@ int isi_addcpu()
 	isi_make_object(isi_lookup_name("clock"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 
+	isi_make_object(isi_lookup_name("speaker"), (struct objtype**)&ninfo, 0, 0);
+	isi_attach(bus, ninfo);
+
 	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ninfo);
 	if(binf) {
