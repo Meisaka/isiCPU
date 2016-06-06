@@ -153,6 +153,34 @@ static int server_handle_new(struct isiSession *hses, struct timespec mtime)
 	return 0;
 }
 
+int session_get_cmdq(struct isiSession *ses, struct sescommandset **ncmd, int remove)
+{
+	if(!ses || !ses->cmdq || !ses->cmdqlimit) return -1;
+	if(ses->cmdqstart == ses->cmdqend) return -1; /* ring is empty */
+	if(ncmd) {
+		*ncmd = ses->cmdq + ses->cmdqstart;
+	}
+	if(remove) {
+		uint32_t ncp = ses->cmdqstart + 1;
+		if(ncp > ses->cmdqlimit) ncp = 0;
+		ses->cmdqstart = ncp;
+	}
+	return 0;
+}
+
+int session_add_cmdq(struct isiSession *ses, struct sescommandset **ncmd)
+{
+	if(!ses || !ses->cmdq || !ses->cmdqlimit) return -1;
+	uint32_t ncp = ses->cmdqend + 1;
+	if(ncp > ses->cmdqlimit) ncp = 0;
+	if(ncp == ses->cmdqstart) return -1; /* ring is full */
+	if(!ncmd) return 0; /* ncmd not specified, just return if possible to add */
+	memset(ses->cmdq+ncp, 0, sizeof(struct sescommandset));
+	*ncmd = ses->cmdq + ses->cmdqend;
+	ses->cmdqend = ncp;
+	return 0;
+}
+
 int session_write_msg(struct isiSession *ses)
 {
 	int len;
