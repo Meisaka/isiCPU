@@ -17,6 +17,8 @@
 #define ISIM_STOP       (0x025)
 #define ISIM_ATTACHAT   (0x026)
 
+#define ISIM_TLOADOBJ   (0x03A)
+
 #define ISIM_MSGOBJ     (0x080)
 #define ISIM_SYNCMEM16  (0x0E0)
 #define ISIM_SYNCMEM32  (0x0E1)
@@ -36,6 +38,8 @@
 #define ISIM_R_ATTACH   (0x222)
 #define ISIM_R_START    (0x224)
 #define ISIM_R_STOP     (0x225)
+
+#define ISIM_R_TLOADOBJ (0x23A)
 
 #define _ISIMSG(m) m
 #define ISIMSG(m, f, l)  ((_ISIMSG(ISIM_##m) << 20) | ((f) << 13) | (l))

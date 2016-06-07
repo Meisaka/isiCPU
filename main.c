@@ -662,6 +662,11 @@ int main(int argc, char**argv, char**envp)
 		} else {
 			i = 0;
 		}
+		for(k = 0; k < allses.count; k++) {
+			struct isiSession *ses = allses.table[k];
+			if(ses && ses->STick && (ses->cmdqstart != ses->cmdqend))
+				ses->STick(ses, CRun);
+		}
 		if(i > 0) {
 			for(k = 0; k < allses.pcount; k++) {
 				if(!allses.ptable[k].revents) continue;

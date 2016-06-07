@@ -428,6 +428,18 @@ uint32_t isi_lookup_name(const char * name)
 	return 0;
 }
 
+int isi_get_name(uint32_t cid, const char **name)
+{
+	if(!name) return -1;
+	for(uint32_t i = 0; i < allcon.count; i++) {
+		if(allcon.table[i]->objtype == cid) {
+			*name = allcon.table[i]->name;
+			return 0;
+		}
+	}
+	return ISIERR_NOTFOUND;
+}
+
 int isi_inittable(struct isiDevTable *t)
 {
 	t->limit = 32;

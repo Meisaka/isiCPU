@@ -26,9 +26,12 @@ struct objtype {
 
 struct sescommandset {
 	uint32_t cmd;
-	uint32_t tid;
-	uint32_t id;
+	uint32_t tid; /* tx ID */
+	uint32_t id; /* session ID for tx commands */
 	uint32_t param;
+	void * rdata; /* alloc/free */
+	void * xdata; /* alloc/free */
+	void * cptr; /* raw pointer, not freed */
 };
 
 typedef int (*isi_ses_handle)(struct isiSession *ses, struct timespec mtime);
@@ -42,11 +45,13 @@ struct isiSession {
 	uint8_t *in;
 	uint8_t *out;
 	void * istate;
+	struct timespec rqtimeout;
 	struct sescommandset *cmdq;
 	uint32_t cmdqstart;
 	uint32_t cmdqend;
 	uint32_t cmdqlimit;
 	isi_ses_handle Recv;
+	isi_ses_handle STick;
 	isi_ses_handle LTick;
 };
 
@@ -207,8 +212,10 @@ int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
 int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target);
 uint32_t isi_lookup_name(const char *);
+int isi_get_name(uint32_t cid, const char **name);
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit);
 int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int limit);
+int isi_text_enc(char *text, int limit, void const *vv, int len);
 
 void fetchtime(struct timespec * t);
 void isi_addtime(struct timespec *, size_t nsec);
@@ -257,6 +264,27 @@ int isi_resync_dev(struct objtype *target);
 int isi_resync_all();
 int isi_remove_sync(struct objtype *target);
 
+/* persistance structs */
+struct isiPLoad {
+	uint32_t ncid;
+	uint64_t uuid;
+	struct objtype *obj;
+};
+
+/* persistance commands */
+int persist_find_session(struct isiSession **ses);
+int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t tid);
+
+/* isi Tx commands */
+#define ISIC_TESTLIST 1
+#define ISIC_TESTDATA 2
+#define ISIC_LOADDESC 10
+#define ISIC_LOADOBJECT 11
+#define ISIC_LOADRV 12
+#define ISIC_LOADNV 13
+#define ISIC_LOADNVRANGE 14
+
+/* isi Error codes */
 #define ISIERR_SUCCESS 0
 #define ISIERR_FAIL -1
 #define ISIERR_NOTFOUND 1
@@ -267,6 +295,7 @@ int isi_remove_sync(struct objtype *target);
 #define ISIERR_FILE -6
 #define ISIERR_NOTALLOWED -40
 
+/* isi netsync flags */
 #define ISIN_SYNC_NONE 0
 #define ISIN_SYNC_DEVR 1
 #define ISIN_SYNC_DEVV 2
@@ -274,6 +303,7 @@ int isi_remove_sync(struct objtype *target);
 #define ISIN_SYNC_MEM 4
 #define ISIN_SYNC_MEMDEV 5
 
+/* isi CPU control flags */
 #define ISICTL_DEBUG  ( 1 << 0 )
 #define ISICTL_STEP   ( 1 << 1 )
 #define ISICTL_STEPE  ( 1 << 2 )
@@ -281,13 +311,16 @@ int isi_remove_sync(struct objtype *target);
 #define ISICTL_RUNFOR ( 1 << 4 )
 #define ISICTL_TRACEC ( 1 << 5 )
 
+/* isi static classes */
 #define ISIT_NONE      0
 #define ISIT_SESSION   0x1000
 #define ISIT_NETSYNC   0x1001
+#define ISIT_PRELOAD   0x1111
 #define ISIT_MEM6416   0x2001
 #define ISIT_DISK      0x2fff
-#define ISIT_CPU       0x3000
 #define ISIT_DCPU      0x3001
+/* isi Class ranges */
+#define ISIT_CPU       0x3000
 #define ISIT_ENDCPU    0x4000
 #define ISIT_BUSDEV    0x4000
 #define ISIT_ENDBUSDEV 0x5000

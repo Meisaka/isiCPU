@@ -100,6 +100,7 @@ int isi_delete_ses(struct isiSession *s)
 	close(s->sfd);
 	free(s->in);
 	free(s->out);
+	if(s->cmdq) free(s->cmdq);
 	isi_delete_object(&s->id);
 	return 0;
 }
@@ -153,6 +154,18 @@ static int server_handle_new(struct isiSession *hses, struct timespec mtime)
 	return 0;
 }
 
+void session_free_cmdq(struct sescommandset *ncmd)
+{
+	if(ncmd->rdata) {
+		free(ncmd->rdata);
+		ncmd->rdata = 0;
+	}
+	if(ncmd->xdata) {
+		free(ncmd->xdata);
+		ncmd->xdata = 0;
+	}
+}
+
 int session_get_cmdq(struct isiSession *ses, struct sescommandset **ncmd, int remove)
 {
 	if(!ses || !ses->cmdq || !ses->cmdqlimit) return -1;
@@ -161,6 +174,9 @@ int session_get_cmdq(struct isiSession *ses, struct sescommandset **ncmd, int re
 		*ncmd = ses->cmdq + ses->cmdqstart;
 	}
 	if(remove) {
+		if(!ncmd) {
+			session_free_cmdq(ses->cmdq + ses->cmdqstart);
+		}
 		uint32_t ncp = ses->cmdqstart + 1;
 		if(ncp > ses->cmdqlimit) ncp = 0;
 		ses->cmdqstart = ncp;
@@ -460,6 +476,18 @@ readagain:
 		pr[1] = pm[1];
 		pr[2] = (uint32_t)ISIERR_FAIL;
 		session_write_msg(ses);
+		break;
+	case ISIM_TLOADOBJ:
+		if(l < 16) break;
+		pr[2] = (uint32_t)persist_load_object(ses->id.id, pm[2], *(uint64_t*)(pm+3), pm[1]);
+		if(pr[2]) {
+			pr[1] = pm[1];
+			pr[3] = 0;
+			pr[4] = pm[2];
+			pr[5] = pr[6] = 0;
+			pr[0] = ISIMSG(R_TLOADOBJ, 0, 24);
+			session_write_msg(ses);
+		}
 		break;
 	case ISIM_MSGOBJ:
 		if(l < 6) break;

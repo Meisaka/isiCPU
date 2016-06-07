@@ -42,6 +42,7 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x024 |     4 |    4 |   C>S    | recursive activate and reset<br>`uint32 id`
 | 0x025 |     4 |    4 |   C>S    | recursive deactivate<br>`uint32 id`
 | 0x026 |    16 |   16 |   C>S    | attach with bus insert object B to A<br>`uint32 id_A`<br>`uint32 id_B`<br>`int32 at_A`<br>`int32 at_B`
+| 0x03A |    16 |   16 | C>S, S>S | transacted load object<br>`uint32 txid`<br>`uint32 classid`<br>`uint64 uuid`
 | 0x080 |     6 | 1300 |   Any    | send object message<br>`uint32 id`<br>`uint16 msg[ (len - 4) | 2 ]`
 | 0x0E0 |     6 | 1300 | S>C, S>S | sync memory a16<br>`uint32 id`<br>`{`<br>`uint16 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
 | 0x0E1 |     8 | 1300 | S>C, S>S | sync memory a32<br>`uint32 id`<br>`{`<br>`uint32 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
@@ -58,6 +59,14 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x222 |     8 |    8 |   R>C    | object attach<br>`uint32 id`<br>`int32 err`
 | 0x224 |     4 |    8 | S>C, R>C | object heirarchy started or reset<br>`uint32 id`<br>`int32 err (initiating session only)`
 | 0x225 |     4 |    8 | S>C, R>C | object heirarchy stopped<br>`uint32 id`<br>`int32 err (initiating session only)`
+| 0x23A |    24 |   24 | R>C, R>S | transaction object loaded<br>`uint32 txid`<br>`int32 err`<br>`uint32 id`<br>`uint32 classid`<br>`uint64 uuid` | if uuid is zero or not equal to the requested uuid<br>and id is non-zero,<br>then the object loaded is a copy of the requested object.
+
+##### Transacted messages
+
+ - Have an extra "txid" value.
+ - the contents of *txid* are returned in the response message.
+ - may arrive out of order and between other "serialized" messages.
+ - may have longer internal processing time.
 
 ##### Parameter Lists
  - A "Parameter" list is a list of tagged, variable sized arguments.
