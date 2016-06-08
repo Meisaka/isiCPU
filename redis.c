@@ -48,6 +48,8 @@ struct redis_istate {
 	int parseheight;
 	int rqsent;
 	int rqstart;
+	uint8_t * cptarget;
+	int64_t cplen;
 	struct redis_osp parsestat[10];
 };
 
@@ -226,15 +228,22 @@ int redis_skip_data(struct isiSession *ses, uint8_t **rdpoint, int64_t *len)
 	return 0;
 }
 
-static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, uint8_t *target, int64_t *len)
+static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, struct redis_istate *istate)
 {
 	uint8_t *rdend = ses->in + ses->rcv;
 	fprintf(stderr, "data:");
-	while(*len > 0 && *rdpoint < rdend) {
-		if(*len > 2) fprintf(stderr, "%02x", **rdpoint);
+	struct redis_osp *osp = istate->parsestat + (istate->parseheight - 1);
+	while(osp->len > 0 && *rdpoint < rdend) {
+		if(osp->len > 2) {
+			fprintf(stderr, "%02x", **rdpoint);
+			if(istate->cplen) {
+				*(istate->cptarget++) = **rdpoint;
+				--istate->cplen;
+			}
+		}
 		else fprintf(stderr, " [%02x]", **rdpoint);
-		++*rdpoint; --*len;
-		if(*len > 0 && *rdpoint == rdend) {
+		++*rdpoint; --osp->len;
+		if(osp->len > 0 && *rdpoint == rdend) {
 			*rdpoint = ses->in;
 			ses->rcv = 0;
 			int r = redis_fetch_data(ses);
@@ -246,9 +255,15 @@ static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, uint8_t *t
 	return 0;
 }
 
-static void redis_cmd_load_data(struct redis_osp *osp, uint8_t *target, int64_t len)
+static void redis_cmd_load_data(struct redis_istate *ist, uint8_t *target, int64_t len)
 {
-	if(osp->etype == REDIS_DATA && osp->mode < 2) osp->mode = 1;
+	if(!ist || !ist->parseheight) return;
+	struct redis_osp *osp = ist->parsestat + (ist->parseheight - 1);
+	if(osp->etype == REDIS_DATA && osp->mode < 2) {
+		osp->mode = 1;
+		ist->cptarget = target;
+		ist->cplen = len;
+	}
 }
 
 static int redis_get_element(struct isiSession *ses, uint8_t **rdpoint, struct redis_osp *osp, uint8_t **strout)
@@ -369,6 +384,8 @@ static int redis_handle_rq(struct isiSession *ses, struct timespec mtime)
 			isi_get_name(pld->ncid, &cname);
 			nlen = strlen(cname) + 12 + redis_pfxlen;
 			isi_text_enc(tuid, 11, &pld->uuid, 8);
+			isilog(L_DEBUG, "net-redis: requesting load for %s%s:%s:*\n",
+					redis_prefix, cname, tuid);
 			l = snprintf((char*)ses->out, lim, "*4\r\n$4\r\nMGET\r\n");
 			lo += l;
 			for(i = 0; i < 3; i++) {
@@ -410,6 +427,9 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 		int eitr = 0;
 		if(istate->parseheight) {
 			osp = istate->parsestat + (istate->parseheight - 1);
+			if(istate->parseheight > 1) {
+				eitr = istate->parsestat[istate->parseheight-2].itr;
+			}
 			switch(osp->etype) {
 			case REDIS_ARRAY:
 				if(osp->itr < osp->len) {
@@ -434,6 +454,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 		} else {
 			fetch = 1;
 		}
+		etype = osp->etype;
 		if(fetch == 2) {
 			istate->parseheight--;
 			if(!istate->parseheight) {
@@ -458,7 +479,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 		if(etype > REDIS_TYPEMAX) {
 			switch(osp->etype) {
 			case REDIS_DATACOPY:
-				i = redis_load_data(ses, &inv, NULL, &osp->len);
+				i = redis_load_data(ses, &inv, istate);
 				if(!osp->len) {
 					osp->etype = REDIS_DATAEND;
 				}
@@ -483,7 +504,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 					break;
 				case 2:
 					if(etype == REDIS_DATA) {
-						redis_cmd_load_data(osp, NULL, osp->len);
+						redis_cmd_load_data(istate, NULL, osp->len);
 					}
 					break;
 				}
@@ -491,7 +512,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 			case ISIC_TESTDATA:
 				isilog(L_DEBUG, "net-redis: load test data type=%d,%d\n", etype, osp->mode);
 				if(etype == REDIS_DATA) {
-					redis_cmd_load_data(osp, NULL, osp->len);
+					redis_cmd_load_data(istate, NULL, osp->len);
 				} else if(etype == REDIS_DATAEND) {
 					isilog(L_DEBUG, "net-redis: test data success\n");
 				} else {
@@ -503,21 +524,38 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 				struct isiPLoad *pld = (struct isiPLoad *)ncmd->rdata;
 				switch(etype) {
 				case REDIS_DATA:
-					redis_cmd_load_data(osp, NULL, osp->len);
+					isilog(L_DEBUG, "net-redis: loadobject data %ld\n", eitr);
+					{
+						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
+						if(eitr == 2) {
+							linfo->nvsize = osp->len;
+							linfo->nvstate = malloc(linfo->nvsize);
+							redis_cmd_load_data(istate, linfo->nvstate, linfo->nvsize);
+						}
+					}
 					ncmd->param++;
 					break;
 				case REDIS_DATAEND:
-					isilog(L_DEBUG, "net-redis: loadobject data success\n", eitr);
+					isilog(L_DEBUG, "net-redis: loadobject data success %ld\n", eitr);
 					break;
 				case REDIS_NIL:
 					isilog(L_DEBUG, "net-redis: loadobject nil data i=%ld\n", eitr);
 					break;
 				case REDIS_CMDEXIT:
-					if(!ncmd->param)
+					if(!ncmd->param) {
 						isilog(L_DEBUG, "net-redis: loadobject fail\n");
-					else
+						session_async_end(ncmd, ISIERR_NOTFOUND);
+						isi_delete_object(pld->obj);
+					} else {
+						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
+						linfo->id.objtype = pld->ncid;
+						linfo->id.uuid = pld->uuid;
+						if(linfo->meta->Init) {
+							linfo->meta->Init(linfo);
+						}
 						isilog(L_DEBUG, "net-redis: loadobject success\n");
-					isi_delete_object(pld->obj);
+						session_async_end(ncmd, 0);
+					}
 					break;
 				}
 			}

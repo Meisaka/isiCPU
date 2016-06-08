@@ -35,6 +35,7 @@ struct sescommandset {
 };
 
 typedef int (*isi_ses_handle)(struct isiSession *ses, struct timespec mtime);
+typedef int (*isi_ses_cmdend)(struct isiSession *ses, struct sescommandset *cmd, int result);
 
 struct isiSession {
 	struct objtype id;
@@ -53,6 +54,7 @@ struct isiSession {
 	isi_ses_handle Recv;
 	isi_ses_handle STick;
 	isi_ses_handle LTick;
+	isi_ses_cmdend AsyncDone;
 };
 
 struct isiSessionTable {
@@ -251,6 +253,7 @@ int session_write_buf(struct isiSession *, void *, int len);
 int isi_pushses(struct isiSession *s);
 int session_get_cmdq(struct isiSession *ses, struct sescommandset **ncmd, int remove);
 int session_add_cmdq(struct isiSession *ses, struct sescommandset **ncmd);
+int session_async_end(struct sescommandset *cmd, int result);
 
 void isi_synctable_init();
 void isi_debug_dump_synctable();

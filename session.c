@@ -18,6 +18,7 @@ int isi_create_object(int objtype, struct objtype **out);
 
 static int server_handle_new(struct isiSession *ses, struct timespec mtime);
 static int session_handle_rd(struct isiSession *ses, struct timespec mtime);
+static int session_handle_async(struct isiSession *ses, struct sescommandset *cmd, int result);
 static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime);
 
 int makeserver(int portnumber)
@@ -81,6 +82,18 @@ int isi_pushses(struct isiSession *s)
 	}
 	t->table[t->count++] = s;
 	return 0;
+}
+
+int session_async_end(struct sescommandset *cmd, int result)
+{
+	uint32_t i;
+	uint32_t sid = cmd->id;
+	for(i = 0; i < allses.count; i++) {
+		struct isiSession *ses = allses.table[i];
+		if(ses && ses->id.id == sid && ses->AsyncDone)
+			return ses->AsyncDone(ses, cmd, result);
+	}
+	return -1;
 }
 
 int isi_delete_ses(struct isiSession *s)
@@ -150,6 +163,7 @@ static int server_handle_new(struct isiSession *hses, struct timespec mtime)
 	ses->stype = 1;
 	ses->Recv = session_handle_rd;
 	ses->LTick = session_handle_keepalive;
+	ses->AsyncDone = session_handle_async;
 	isi_pushses(ses);
 	return 0;
 }
@@ -245,6 +259,26 @@ static int session_handle_keepalive(struct isiSession *ses, struct timespec mtim
 		close(ses->sfd);
 		errno = 0;
 		return -1;
+	}
+	return 0;
+}
+
+static int session_handle_async(struct isiSession *ses, struct sescommandset *cmd, int result)
+{
+	uint32_t *pr = (uint32_t*)ses->out;
+	switch(cmd->cmd) {
+	case ISIC_LOADOBJECT:
+		{
+			struct isiPLoad *pld = (struct isiPLoad *)cmd->rdata;
+			pr[1] = cmd->tid;
+			pr[2] = result;
+			pr[3] = result? 0:pld->obj->id;
+			pr[4] = pld->ncid;
+			*(uint64_t*)(pr+5) = pld->uuid;
+			pr[0] = ISIMSG(R_TLOADOBJ, 0, 24);
+			session_write_msg(ses);
+		}
+		break;
 	}
 	return 0;
 }
