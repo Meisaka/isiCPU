@@ -119,6 +119,10 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		else {
 			dev->seeksector = msg[3];
 			dev->seektrack = dev->seeksector / 18;
+			struct isiDiskSeekMsg dseek;
+			dseek.mcode = 0x0020;
+			dseek.block = dev->seeksector >> 2;
+			info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
 			dev->rwaddr = msg[4];
 			dev->oper = 1;
 			msg[1] = 1;
@@ -136,6 +140,10 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		else {
 			dev->seeksector = msg[3];
 			dev->seektrack = dev->seeksector / 18;
+			struct isiDiskSeekMsg dseek;
+			dseek.mcode = 0x0020;
+			dseek.block = dev->seeksector >> 2;
+			info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
 			mc = dev->rwaddr = msg[4];
 			for(i = 0; i < 512; i++) {
 				dss->svbuf[i] = isi_hw_rdmem((isiram16)info->mem, mc);
@@ -173,15 +181,13 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 				dev->sector++;
 				dev->sector %= 18;
 				isi_addtime(&info->nrun, 32573);
-				if((dev->seeksector + 1) % 18 == dev->sector) {
+				uint32_t seekblock;
+				isi_disk_getindex(info->dndev, &seekblock);
+				if((dev->seeksector + 1) % 18 == dev->sector && seekblock == dev->seeksector >> 2) {
 					/* read success */
-					struct isiDiskSeekMsg dseek;
 					uint16_t *dr;
 					isi_disk_getblock(info->dndev, (void**)&dr);
 					dr += (512 * (dev->seeksector & 3));
-					dseek.mcode = 0x0020;
-					dseek.block = dev->seeksector >> 2;
-					info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
 					if(dev->oper == 1) {
 						uint16_t mc;
 						mc = dev->rwaddr;

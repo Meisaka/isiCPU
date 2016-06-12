@@ -192,7 +192,7 @@ int session_get_cmdq(struct isiSession *ses, struct sescommandset **ncmd, int re
 			session_free_cmdq(ses->cmdq + ses->cmdqstart);
 		}
 		uint32_t ncp = ses->cmdqstart + 1;
-		if(ncp > ses->cmdqlimit) ncp = 0;
+		if(ncp >= ses->cmdqlimit) ncp = 0;
 		ses->cmdqstart = ncp;
 	}
 	return 0;
@@ -202,7 +202,7 @@ int session_add_cmdq(struct isiSession *ses, struct sescommandset **ncmd)
 {
 	if(!ses || !ses->cmdq || !ses->cmdqlimit) return -1;
 	uint32_t ncp = ses->cmdqend + 1;
-	if(ncp > ses->cmdqlimit) ncp = 0;
+	if(ncp >= ses->cmdqlimit) ncp = 0;
 	if(ncp == ses->cmdqstart) return -1; /* ring is full */
 	if(!ncmd) return 0; /* ncmd not specified, just return if possible to add */
 	memset(ses->cmdq+ncp, 0, sizeof(struct sescommandset));

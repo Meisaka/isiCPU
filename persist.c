@@ -27,13 +27,14 @@ int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t 
 	struct objtype *obj;
 	int r;
 	if(persist_find_session(&ses)) return -1;
-	if(session_add_cmdq(ses, &ncmd)) return -1;
+	if(session_add_cmdq(ses, &ncmd)) return ISIERR_BUSY;
+	if(!isi_find_uuid(cid, uuid, NULL)) return ISIERR_LOADED;
 	r = isi_premake_object(cid, &con, &obj);
 	if(r) return r;
 	struct isiPLoad * plc = malloc(sizeof(struct isiPLoad));
 	if(!plc) {
 		isi_delete_object(obj);
-		return -1;
+		return ISIERR_NOMEM;
 	}
 	memset(plc, 0, sizeof(struct isiPLoad));
 	plc->ncid = cid;
@@ -44,6 +45,32 @@ int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t 
 	ncmd->tid = tid;
 	ncmd->rdata = plc;
 	obj->objtype = ISIT_PRELOAD;
+	return 0;
+}
+
+int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode)
+{
+	struct isiSession *ses;
+	struct sescommandset *ncmd;
+	if(persist_find_session(&ses)) return -1;
+	if(session_add_cmdq(ses, &ncmd)) return ISIERR_BUSY;
+	switch(mode & 3) {
+	case 0:
+		return -1;
+	case 1:
+		ncmd->cmd = ISIC_DISKLOAD;
+		break;
+	case 2:
+		ncmd->cmd = ISIC_DISKWRITE;
+		break;
+	case 3:
+		ncmd->cmd = ISIC_DISKWRLD;
+		break;
+	}
+	ncmd->id = info->id.id;
+	ncmd->cptr = info;
+	ncmd->tid = wrblk;
+	ncmd->param = rdblk;
 	return 0;
 }
 

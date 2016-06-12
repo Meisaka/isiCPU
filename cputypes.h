@@ -241,6 +241,7 @@ int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t ns
 int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsize);
 int isi_text_dec(const char *text, int len, int limit, void *vv, int olen);
 int isi_disk_getblock(struct isiInfo *disk, void **blockaddr);
+int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex);
 int isi_find_bin(uint64_t diskid, char **nameout);
 size_t isi_fsize(const char *path);
 int isi_fname_id(const char *fname, uint64_t *id);
@@ -277,6 +278,7 @@ struct isiPLoad {
 /* persistance commands */
 int persist_find_session(struct isiSession **ses);
 int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t tid);
+int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode);
 
 /* isi Tx commands */
 #define ISIC_TESTLIST 1
@@ -286,6 +288,9 @@ int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t 
 #define ISIC_LOADRV 12
 #define ISIC_LOADNV 13
 #define ISIC_LOADNVRANGE 14
+#define ISIC_DISKLOAD 15
+#define ISIC_DISKWRITE 16
+#define ISIC_DISKWRLD 17
 
 /* isi Error codes */
 #define ISIERR_SUCCESS 0
@@ -296,6 +301,8 @@ int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t 
 #define ISIERR_NOCOMPAT -4
 #define ISIERR_NOMEM -5
 #define ISIERR_FILE -6
+#define ISIERR_LOADED -7
+#define ISIERR_BUSY -8
 #define ISIERR_NOTALLOWED -40
 
 /* isi netsync flags */

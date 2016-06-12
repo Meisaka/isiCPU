@@ -50,6 +50,7 @@ struct redis_istate {
 	int rqstart;
 	uint8_t * cptarget;
 	int64_t cplen;
+	int64_t zrlen;
 	struct redis_osp parsestat[10];
 };
 
@@ -235,11 +236,10 @@ static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, struct red
 	struct redis_osp *osp = istate->parsestat + (istate->parseheight - 1);
 	while(osp->len > 0 && *rdpoint < rdend) {
 		if(osp->len > 2) {
-			fprintf(stderr, "%02x", **rdpoint);
-			if(istate->cplen) {
+			if(istate->cptarget && istate->cplen) {
 				*(istate->cptarget++) = **rdpoint;
 				--istate->cplen;
-			}
+			} else fprintf(stderr, "%02x", **rdpoint);
 		}
 		else fprintf(stderr, " [%02x]", **rdpoint);
 		++*rdpoint; --osp->len;
@@ -263,6 +263,10 @@ static void redis_cmd_load_data(struct redis_istate *ist, uint8_t *target, int64
 		osp->mode = 1;
 		ist->cptarget = target;
 		ist->cplen = len;
+		if(osp->len < len) {
+			ist->cplen = osp->len;
+			ist->zrlen = len - osp->len;
+		}
 	}
 }
 
@@ -397,6 +401,56 @@ static int redis_handle_rq(struct isiSession *ses, struct timespec mtime)
 			write(ses->sfd, ses->out, lo);
 		}
 			break;
+		case ISIC_DISKWRITE:
+		case ISIC_DISKWRLD:
+		{
+			const char *cname = 0;
+			size_t nlen;
+			uint64_t fullindex = 0;
+			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+			isi_get_name(disk->id.objtype, &cname);
+			nlen = strlen(cname) + 12 + redis_pfxlen;
+			isi_text_enc(tuid, 11, &disk->id.uuid, 8);
+			isilog(L_DEBUG, "net-redis: writing disk data %s%s:%s:blk\n",
+					redis_prefix, cname, tuid);
+			lo += snprintf((char*)ses->out, lim, "*4\r\n$8\r\nSETRANGE\r\n");
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
+					4+nlen,	redis_prefix, cname, tuid);
+			fullindex = ncmd->tid * 4096ull;
+			l = snprintf(tuid, 16, "%lu", fullindex);
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$4096\r\n");
+			void *blkdat;
+			isi_disk_getblock(disk, &blkdat);
+			memcpy(ses->out+lo, blkdat, 4096);
+			lo += 4096;
+			lo += snprintf((char*)ses->out+lo, lim-lo, "\r\n");
+			write(ses->sfd, ses->out, lo);
+		}
+			break;
+		case ISIC_DISKLOAD:
+		{
+			const char *cname = 0;
+			size_t nlen;
+			uint64_t fullindex = 0;
+			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+			isi_get_name(disk->id.objtype, &cname);
+			nlen = strlen(cname) + 12 + redis_pfxlen;
+			isi_text_enc(tuid, 11, &disk->id.uuid, 8);
+			isilog(L_DEBUG, "net-redis: requesting disk data %s%s:%s:blk\n",
+					redis_prefix, cname, tuid);
+			lo += snprintf((char*)ses->out, lim, "*4\r\n$8\r\nGETRANGE\r\n");
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
+					4+nlen,	redis_prefix, cname, tuid);
+			fullindex = ncmd->param * 4096ull;
+			l = snprintf(tuid, 16, "%lu", fullindex);
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			fullindex += 4095u;
+			l = snprintf(tuid, 16, "%lu", fullindex);
+			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			write(ses->sfd, ses->out, lo);
+		}
+			break;
 		}
 		istate->rqsent = 1;
 	}
@@ -481,7 +535,11 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 			case REDIS_DATACOPY:
 				i = redis_load_data(ses, &inv, istate);
 				if(!osp->len) {
-					osp->etype = REDIS_DATAEND;
+					if(!istate->cplen && istate->zrlen) {
+						memset(istate->cptarget, 0, istate->zrlen);
+						istate->zrlen = 0;
+					}
+					etype = osp->etype = REDIS_DATAEND;
 				}
 				break;
 			case REDIS_DATASKIP:
@@ -559,6 +617,29 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 					break;
 				}
 			}
+				break;
+			case ISIC_DISKLOAD:
+				isilog(L_DEBUG, "net-redis: diskload\n");
+				if(etype == REDIS_DATA) {
+					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+					void *blkdat;
+					isi_disk_getblock(disk, &blkdat);
+					redis_cmd_load_data(istate, blkdat, 4096);
+				} else if(etype == REDIS_CMDEXIT) {
+					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+					uint16_t dm[4] = {0x22, ncmd->param, ncmd->param >> 16, 0};
+					disk->c->MsgIn(disk, NULL, dm, 3, mtime);
+				}
+				break;
+			case ISIC_DISKWRITE:
+				isilog(L_DEBUG, "net-redis: diskwrite\n");
+				break;
+			case ISIC_DISKWRLD:
+				isilog(L_DEBUG, "net-redis: diskwrite-load\n");
+				if(etype == REDIS_INT) {
+					cmdnox = 1;
+					ncmd->cmd = ISIC_DISKLOAD;
+				}
 				break;
 			default:
 				isilog(L_DEBUG, "net-redis: message handle command (%d) unknown\n", ncmd->cmd);
