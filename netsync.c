@@ -235,7 +235,7 @@ int isi_set_devmemsync_extent(struct objtype *target, struct objtype *memtarget,
 	ns->ctl |= NSY_SYNCMEM;
 	ns->ctl &= ~NSY_SYNCOBJ;
 	if(ns->base[index] != base || ns->len[index] != extent) {
-		ns->ctl &= ~NSY_MEM;
+		ns->ctl &= ~(NSY_MEM | NSY_MEMVALID);
 		isilog(L_DEBUG, "netsync: adding extent to sync [%d][0x%04x +0x%04x]\n", index, base, extent);
 		ns->base[index] = base;
 		ns->len[index] = extent;
