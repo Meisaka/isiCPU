@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 #ifndef DEBUG_PRINTF
 #define DEBUG_PRINTF(A...) fprintf(stderr, A)

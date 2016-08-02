@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 /* state while this device exists/active (runtime volatile) */
 struct speaker_rvstate {

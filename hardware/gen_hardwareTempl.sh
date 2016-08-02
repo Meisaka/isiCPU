@@ -3,7 +3,7 @@
 NAME=$1
 cat <<ENDOFLINE
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 /* state while this device exists/active (runtime volatile) */
 struct ${NAME}_rvstate {

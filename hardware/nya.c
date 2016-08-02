@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 #include <unistd.h>
 
 // TODO Not quite "Offical"

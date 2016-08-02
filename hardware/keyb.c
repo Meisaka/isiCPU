@@ -1,4 +1,4 @@
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 struct LKBD {
 	uint16_t imsg;
