@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 struct imva_rvstate {
 	uint16_t base; /* hw spec */
