@@ -55,7 +55,7 @@ void Disk_M35FD_Register()
 	isi_register(&Disk_M35FD_Con);
 }
 
-static int Disk_M35FD_QAttach(struct isiInfo *info, struct isiInfo *dev)
+static int Disk_M35FD_QAttach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
 	if(!dev || dev->id.objtype != ISIT_DISK) return -1;
 	return 0;
@@ -77,10 +77,12 @@ static int Disk_M35FD_Reset(struct isiInfo *info)
 static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	uint16_t iom[3];
 	if(dev->iword) {
-		if(info->hostcpu && info->hostcpu->c->MsgIn) {
-			info->hostcpu->c->MsgIn(info->hostcpu, info, &dev->iword, 1, *mtime);
-		}
+		iom[0] = 2;
+		iom[1] = 0;
+		iom[2] = dev->iword;
+		isi_message_dev(info, ISIAT_UP, iom, 3, *mtime);
 	}
 }
 
@@ -92,9 +94,11 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 	uint16_t mc;
 	int i;
 	int r = 0;
+	struct isiInfo *media = 0;
+	isi_getindex_dev(info, 0, &media);
 	switch(msg[0]) {
 	case 0:
-		if(info->dndev) {
+		if(media) {
 			if(dev->oper) {
 				msg[1] = 3;
 			} else {
@@ -114,7 +118,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		msg[1] = 0;
 		lerr = dev->errcode;
 		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
-		else if(!info->dndev) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(!media) dev->errcode = ERR_M35_NO_MEDIA;
 		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
 		else {
 			dev->seeksector = msg[3];
@@ -122,7 +126,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
+			media->c->MsgIn(media, info, (uint16_t*)&dseek, 4, crun);
 			dev->rwaddr = msg[4];
 			dev->oper = 1;
 			msg[1] = 1;
@@ -134,7 +138,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 		msg[1] = 0;
 		lerr = dev->errcode;
 		if(dev->oper != 0) dev->errcode = ERR_M35_BUSY;
-		else if(!info->dndev) dev->errcode = ERR_M35_NO_MEDIA;
+		else if(!media) dev->errcode = ERR_M35_NO_MEDIA;
 		else if(msg[3] >= 1440) dev->errcode = ERR_M35_SECTOR;
 		else if(0) dev->errcode = ERR_M35_PROTECT; /* TODO write_protect */
 		else {
@@ -143,7 +147,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			info->dndev->c->MsgIn(info->dndev, info, (uint16_t*)&dseek, 4, crun);
+			media->c->MsgIn(media, info, (uint16_t*)&dseek, 4, crun);
 			mc = dev->rwaddr = msg[4];
 			for(i = 0; i < 512; i++) {
 				dss->svbuf[i] = isi_hw_rdmem((isiram16)info->mem, mc);
@@ -164,9 +168,10 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
+	struct isiInfo *media = 0;
 	while(isi_time_lt(&info->nrun, &crun)) {
 		if(dev->oper) {
-			if(!info->dndev || !info->dndev->c->MsgIn) {
+			if(isi_getindex_dev(info, 0, &media) || !media->c->MsgIn) {
 				dev->errcode = ERR_M35_EJECT;
 				dev->oper = 0;
 				Disk_M35FD_statechange(info, &info->nrun);
@@ -182,11 +187,11 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 				dev->sector %= 18;
 				isi_addtime(&info->nrun, 32573);
 				uint32_t seekblock;
-				isi_disk_getindex(info->dndev, &seekblock);
+				isi_disk_getindex(media, &seekblock);
 				if((dev->seeksector + 1) % 18 == dev->sector && seekblock == dev->seeksector >> 2) {
 					/* read success */
 					uint16_t *dr;
-					isi_disk_getblock(info->dndev, (void**)&dr);
+					isi_disk_getblock(media, (void**)&dr);
 					dr += (512 * (dev->seeksector & 3));
 					if(dev->oper == 1) {
 						uint16_t mc;

@@ -93,9 +93,11 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 ##### Attach Point Enums
  - values > 0 are normal bus attach points
  - values < 0 are special attach points
+ - Attaching a "memory" type device currently ignores destination attach point, the destination should be set to 0 (zero) and source to -1 to maintain possible future compatibility.
 
-|    Point   |   Value
-|:----------:|------------
-| AT_BUS_END |     -1
-|    DOWN    |     -2
+|     Point    |   Value
+|:------------:|------------
+|  AT_BUS_END  |     -1
+| AT_BUS_START |     -2
+|   UP_DEVICE  |     -3
 

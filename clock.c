@@ -73,11 +73,15 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 	struct Clock_rvstate *clk = (struct Clock_rvstate*)info->rvstate;
 	if(!clk->rate) return 0;
 	if(!isi_time_lt(&info->nrun, &crun)) return 0;
+	uint16_t iom[3];
 	if(!(clk->raccum++ < clk->rate)) { /* handle divided rate */
 		clk->raccum = 0;
 		clk->ctime++;
-		if(clk->iword && info->hostcpu && info->hostcpu->c->MsgIn) {
-			info->hostcpu->c->MsgIn(info->hostcpu, info, &clk->iword, 1, info->nrun);
+		if(clk->iword) {
+			iom[0] = 2;
+			iom[1] = 0;
+			iom[2] = clk->iword;
+			isi_message_dev(info, ISIAT_UP, iom, 3, info->nrun);
 		}
 	}
 	if(clk->accum++ < 15) { /* magically sync the 60Hz base clock to 1 second */

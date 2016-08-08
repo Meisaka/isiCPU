@@ -27,8 +27,8 @@ void isi_synctable_init()
 {
 	allsync.limit = 128;
 	allsync.count = 0;
-	allsync.table = (struct isiNetSync**)malloc(allsync.limit * sizeof(void*));
-	allsync.out = (uint8_t *)malloc(2048);
+	allsync.table = (struct isiNetSync**)isi_alloc(allsync.limit * sizeof(void*));
+	allsync.out = (uint8_t *)isi_alloc(2048);
 }
 
 int isi_synctable_add(struct isiNetSync *sync)
@@ -36,7 +36,7 @@ int isi_synctable_add(struct isiNetSync *sync)
 	if(!sync) return -1;
 	void *n;
 	if(allsync.count >= allsync.limit) {
-		n = realloc(allsync.table, (allsync.limit + allsync.limit) * sizeof(void*));
+		n = isi_realloc(allsync.table, (allsync.limit + allsync.limit) * sizeof(void*));
 		if(!n) return -5;
 		allsync.limit += allsync.limit;
 		allsync.table = (struct isiNetSync**)n;

@@ -31,7 +31,7 @@ int persist_load_object(uint32_t session, uint32_t cid, uint64_t uuid, uint32_t 
 	if(!isi_find_uuid(cid, uuid, NULL)) return ISIERR_LOADED;
 	r = isi_premake_object(cid, &con, &obj);
 	if(r) return r;
-	struct isiPLoad * plc = malloc(sizeof(struct isiPLoad));
+	struct isiPLoad * plc = isi_alloc(sizeof(struct isiPLoad));
 	if(!plc) {
 		isi_delete_object(obj);
 		return ISIERR_NOMEM;

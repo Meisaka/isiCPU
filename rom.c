@@ -120,7 +120,7 @@ static int EEROM_New(struct isiInfo *info, const uint8_t * cfg, size_t lcfg)
 	rvrom->sz = rqs >> 1;
 	if(fname) {
 		if(!info->nvstate) {
-			info->nvstate = malloc(info->nvsize = rqs);
+			info->nvstate = isi_alloc(info->nvsize = rqs);
 		} else {
 			if(rqs > info->nvsize) rqs = info->nvsize;
 		}

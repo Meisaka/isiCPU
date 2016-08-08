@@ -71,8 +71,19 @@ struct isiObjTable {
 	uint32_t limit;
 };
 
+struct isiConPoint {
+	struct isiInfo *t;
+	int32_t i;
+};
+
 struct isiDevTable {
 	struct isiInfo ** table;
+	uint32_t count;
+	uint32_t limit;
+};
+
+struct isiDevTree {
+	struct isiConPoint * table;
 	uint32_t count;
 	uint32_t limit;
 };
@@ -97,7 +108,7 @@ typedef int (*isi_size_call)(int, size_t *);
 typedef int (*isi_new_call)(struct isiInfo *, const uint8_t *, size_t);
 typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
 typedef int (*isi_control_call)(struct isiInfo *);
-typedef int (*isi_attach_call)(struct isiInfo *to, struct isiInfo *dev);
+typedef int (*isi_attach_call)(struct isiInfo *to, int32_t topoint, struct isiInfo *dev, int32_t frompoint);
 typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, int, struct timespec mtime);
 
 struct isiConstruct {
@@ -122,10 +133,10 @@ struct isiConTable {
 struct isiInfoCalls {
 	isi_run_call RunCycles;
 	isi_message_call MsgIn;
-	isi_message_call MsgOut;
 	isi_attach_call QueryAttach;
 	isi_attach_call Attach;
 	isi_attach_call Attached;
+	isi_attach_call Deattach;
 	isi_control_call Reset;
 	isi_control_call Delete;
 };
@@ -133,8 +144,7 @@ struct isiInfoCalls {
 struct isiInfo {
 	struct objtype id;
 	struct isiInfoCalls *c;
-	struct isiInfo *updev;
-	struct isiInfo *dndev;
+	struct isiConPoint updev;
 	void * rvstate;
 	void * svstate;
 	void * nvstate;
@@ -142,17 +152,9 @@ struct isiInfo {
 	struct isiReflection *svproto;
 	size_t nvsize;
 	void * mem;
-	struct isiInfo * hostcpu;
 	const struct isiConstruct * meta;
 	struct timespec nrun;
-};
-
-struct isiBusInfo SUBCLASS(isiInfo) {
-	/* isiInfo */
-#ifndef __cplusplus
-	struct isiInfo i;
-#endif
-	struct isiDevTable busdev;
+	struct isiDevTree busdev;
 };
 
 struct isiDisk SUBCLASS(isiInfo) {
@@ -204,7 +206,8 @@ int isi_cpu_isbrk(isiram16 ram, uint16_t a);
 void isi_cpu_togglebrk(isiram16 ram, uint16_t a);
 
 /* attach dev to item */
-int isi_attach(struct isiInfo *item, struct isiInfo *dev);
+int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint);
+int isi_deattach(struct isiInfo *item, int32_t itempoint);
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
 int isi_create_object(int objtype, struct objtype **out);
 int isi_delete_object(struct objtype *obj);
@@ -213,10 +216,15 @@ int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
 int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target);
+int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev);
+int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *, int, struct timespec mtime);
 uint32_t isi_lookup_name(const char *);
 int isi_get_name(uint32_t cid, const char **name);
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit);
 int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int limit);
+void * isi_realloc(void *h, size_t mem);
+void * isi_alloc(size_t mem);
+void * isi_alloc_array(size_t count, size_t elemsize);
 int isi_text_enc(char *text, int limit, void const *vv, int len);
 
 void fetchtime(struct timespec * t);
@@ -303,7 +311,9 @@ int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode)
 #define ISIERR_FILE -6
 #define ISIERR_LOADED -7
 #define ISIERR_BUSY -8
+#define ISIERR_NOTSUPPORTED -10
 #define ISIERR_NOTALLOWED -40
+#define ISIERR_ATTACHINUSE -41
 
 /* isi netsync flags */
 #define ISIN_SYNC_NONE 0
@@ -312,6 +322,11 @@ int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode)
 #define ISIN_SYNC_DEVRV 3
 #define ISIN_SYNC_MEM 4
 #define ISIN_SYNC_MEMDEV 5
+
+/* specical attach points */
+#define ISIAT_APPEND -1
+#define ISIAT_INSERTSTART -2
+#define ISIAT_UP -3
 
 /* isi CPU control flags */
 #define ISICTL_DEBUG  ( 1 << 0 )

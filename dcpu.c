@@ -98,22 +98,29 @@ void DCPU_Register()
 	isi_register(&DCPU_Con);
 }
 
-static int DCPU_QueryAttach(struct isiInfo *info, struct isiInfo *dev)
+static int DCPU_QueryAttach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
 	if(!info || !dev) return ISIERR_INVALIDPARAM;
 	if(dev->id.objtype == ISIT_MEM6416) return 0;
-	if(dev->id.objtype != ISIT_BUSDEV) return ISIERR_NOCOMPAT;
-	if(!info->mem) return ISIERR_MISSPREREQ;
-	return 0;
+	return ISIERR_NOCOMPAT;
 }
-static int DCPU_Attach(struct isiInfo *info, struct isiInfo *dev)
+static int DCPU_Attach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
 	if(!info || !dev) return ISIERR_INVALIDPARAM;
 	if(dev->id.objtype == ISIT_MEM6416) {
 		struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
 		pr->memptr = (isiram16)dev;
 	}
-	return 0;
+	return ISIERR_INVALIDPARAM;
+}
+static int DCPU_Attached(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
+{
+	if(!info || !dev) return ISIERR_INVALIDPARAM;
+	if(dev->id.objtype == ISIT_MEM6416) {
+		struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
+		pr->memptr = (isiram16)dev->mem;
+	}
+	return ISIERR_INVALIDPARAM;
 }
 
 static struct isiInfoCalls DCPUCalls = {
@@ -121,7 +128,8 @@ static struct isiInfoCalls DCPUCalls = {
 	.Reset = DCPU_reset,
 	.MsgIn = DCPU_interrupt,
 	.QueryAttach = DCPU_QueryAttach,
-	.Attach = DCPU_Attach
+	.Attach = DCPU_Attach,
+	.Attached = DCPU_Attached
 };
 
 static int DCPU_init(struct isiInfo *info)
@@ -149,9 +157,7 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->cycl = 0;
 	pr->IQC = 0;
 	pr->msg = 0;
-	if((info->dndev)
-		&& (info->dndev->c->MsgIn)
-		&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun) == 0)) {
+	if(!isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun)) {
 		pr->hwcount = pr->dai;
 	}
 	return 0;
@@ -238,16 +244,24 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
-	if(pr->IA) {
-		if(pr->IQC < 256) {
-			pr->IQU[pr->IQC++] = *msg;
-			return 1;
-		} else {
-			return DCPU_setonfire(pr);
+	if(msg[0] == 3) {
+		for(int i = 1; i < 8 && i < len; i++) {
+			pr->R[i - 1] = msg[i];
 		}
-	} else {
 		return 0;
+	} else if(msg[0] == 2) {
+		if(pr->IA) {
+			if(pr->IQC < 256) {
+				pr->IQU[pr->IQC++] = msg[1];
+				return 0;
+			} else {
+				return DCPU_setonfire(pr);
+			}
+		} else {
+			return 0;
+		}
 	}
+	return 0;
 }
 
 // Write referenced B operand
@@ -581,9 +595,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				alu1.u = DCPU_deref(oa, pr, ram);
 				pr->msg = 1;
 				pr->dai = alu1.u;
-				if((info->dndev)
-					&& (info->dndev->c->MsgIn)
-					&& (info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun) == 0)) {
+				if(isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun) == 0) {
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -597,9 +609,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				//pr->MODE |= DCPUMODE_EXTINT;
 				pr->msg = 2;
 				pr->dai = alu1.u;
-				if((info->dndev)
-					&& (info->dndev->c->MsgIn)
-					&& (op = info->dndev->c->MsgIn(info->dndev, info, &pr->msg, 10, info->nrun))) {
+				if(0 != (op = isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;

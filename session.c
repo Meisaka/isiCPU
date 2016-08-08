@@ -65,7 +65,7 @@ void isi_init_sestable()
 	t->limit = 32;
 	t->count = 0;
 	t->pcount = 0;
-	t->table = (struct isiSession**)malloc(t->limit * sizeof(void*));
+	t->table = (struct isiSession**)isi_alloc(t->limit * sizeof(void*));
 	t->ptable = 0;
 }
 
@@ -75,7 +75,7 @@ int isi_pushses(struct isiSession *s)
 	struct isiSessionTable *t = &allses;
 	void *n;
 	if(t->count >= t->limit) {
-		n = realloc(t->table, (t->limit + t->limit) * sizeof(void*));
+		n = isi_realloc(t->table, (t->limit + t->limit) * sizeof(void*));
 		if(!n) return -5;
 		t->limit += t->limit;
 		t->table = (struct isiSession**)n;
@@ -146,8 +146,8 @@ static int server_handle_new(struct isiSession *hses, struct timespec mtime)
 	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
 		return i;
 	}
-	ses->in = (uint8_t*)malloc(8192);
-	ses->out = (uint8_t*)malloc(2048);
+	ses->in = (uint8_t*)isi_alloc(8192);
+	ses->out = (uint8_t*)isi_alloc(2048);
 	ses->sfd = fdn;
 	memcpy(&ses->r_addr, &ripn, sizeof(struct sockaddr_in));
 	if(ripn.sin_family == AF_INET) {
@@ -412,8 +412,8 @@ readagain:
 			if(obj && obj->objtype >= 0x2f00) {
 				info = (struct isiInfo*)obj;
 				pr[1+ec] = obj->id;
-				pr[2+ec] = info->dndev ? info->dndev->id.id : 0;
-				pr[3+ec] = info->updev ? info->updev->id.id : 0;
+				pr[2+ec] = 0; /* deprecated ("down" device) */
+				pr[3+ec] = info->updev.t ? info->updev.t->id.id : 0;
 				pr[4+ec] = info->mem ? ((struct objtype*)info->mem)->id : 0;
 				ec+=4;
 			}
@@ -444,6 +444,7 @@ readagain:
 		break;
 	case ISIM_DELOBJ:
 		if(l < 4) break;
+		isilog(L_WARN, "net-session: unimplemented: delete object\n");
 		break;
 	case ISIM_ATTACH:
 		if(l < 8) break;
@@ -457,7 +458,7 @@ readagain:
 			} else if(a->objtype < 0x2f00){
 				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
 			} else {
-				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, (struct isiInfo*)b);
+				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, ISIAT_APPEND, (struct isiInfo*)b, ISIAT_UP);
 			}
 		}
 		session_write_msg(ses);
@@ -466,7 +467,7 @@ readagain:
 		if(l < 8) break;
 		pr[0] = ISIMSG(R_ATTACH, 0, 8);
 		pr[1] = pm[1];
-		pr[2] = (uint32_t)ISIERR_FAIL;
+		pr[2] = (uint32_t)ISIERR_NOTSUPPORTED;
 		session_write_msg(ses);
 		break;
 	case ISIM_START:
@@ -508,7 +509,15 @@ readagain:
 		if(l < 16) break;
 		pr[0] = ISIMSG(R_ATTACH, 0, 8);
 		pr[1] = pm[1];
-		pr[2] = (uint32_t)ISIERR_FAIL;
+		{
+			struct objtype *a;
+			struct objtype *b;
+			if(isi_find_obj(pm[1], &a) || isi_find_obj(pm[2], &b)) {
+				pr[2] = (uint32_t)ISIERR_NOTFOUND;
+			} else {
+				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, (int32_t)pm[3], (struct isiInfo*)b, (int32_t)pm[4]);
+			}
+		}
 		session_write_msg(ses);
 		break;
 	case ISIM_TLOADOBJ:
@@ -533,7 +542,7 @@ readagain:
 		}
 		if(info->id.objtype >= 0x2000) {
 			if(info->c->MsgIn) {
-				info->c->MsgIn(info, info->updev, (uint16_t*)(pm+2), 10, mtime);
+				info->c->MsgIn(info, info->updev.t, (uint16_t*)(pm+2), 10, mtime);
 			}
 		}
 	}

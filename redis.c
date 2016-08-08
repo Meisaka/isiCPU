@@ -89,12 +89,12 @@ int redis_make_session(struct sockaddr *ripa, socklen_t rin)
 	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
 		return i;
 	}
-	ses->in = (uint8_t*)malloc(8192);
-	ses->out = (uint8_t*)malloc(8192);
-	ses->istate = malloc(sizeof(struct redis_istate));
+	ses->in = (uint8_t*)isi_alloc(8192);
+	ses->out = (uint8_t*)isi_alloc(8192);
+	ses->istate = isi_alloc(sizeof(struct redis_istate));
 	ses->cmdqlimit = 1024;
 	ses->cmdqend = 0;
-	ses->cmdq = (struct sescommandset *)malloc(ses->cmdqlimit * sizeof(struct sescommandset));
+	ses->cmdq = (struct sescommandset *)isi_alloc(ses->cmdqlimit * sizeof(struct sescommandset));
 	memset(ses->cmdq, 0, ses->cmdqlimit * sizeof(struct sescommandset));
 	ses->sfd = fdn;
 	ses->stype = 2;
@@ -144,7 +144,7 @@ int redis_make_session_lu(const char *addr)
 		isilog(L_ERR, "net-param: Connect Invalid input: [%s]\n", addr);
 		return -1;
 	}
-	saddr = (char*)malloc((aend-addr)+1);
+	saddr = (char*)isi_alloc((aend-addr)+1);
 	memcpy(saddr, addr, (aend-addr));
 	saddr[aend-addr] = 0;
 	if(!aport) {
@@ -587,7 +587,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
 						if(eitr == 2) {
 							linfo->nvsize = osp->len;
-							linfo->nvstate = malloc(linfo->nvsize);
+							linfo->nvstate = isi_alloc(linfo->nvsize);
 							redis_cmd_load_data(istate, linfo->nvstate, linfo->nvsize);
 						}
 					}

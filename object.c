@@ -8,6 +8,10 @@ struct isiObjTable allobj;
 
 static uint32_t maxsid = 0;
 
+static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev);
+static int isi_appendindex_dev(struct isiInfo *dev, struct isiInfo *downdev, int32_t *downindexout);
+static int isi_setindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo *downdev, int32_t downindex);
+
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit)
 {
 	if(!p || plen < 1 || !code) return -1;
@@ -103,55 +107,127 @@ int isi_fetch_parameter(const uint8_t *p, int plen, int code, void *out, int lim
 	return 1;
 }
 
-int isi_attach(struct isiInfo *item, struct isiInfo *dev)
+void * isi_realloc(void *h, size_t mem)
+{
+	void * p;
+	if(h) {
+		p = realloc(h, mem);
+		if(!p) return NULL;
+	} else {
+		p = malloc(mem);
+		if(!p) return NULL;
+		memset(p, 0, mem);
+	}
+	return p;
+}
+
+void * isi_alloc(size_t mem)
+{
+	void * p;
+	p = malloc(mem);
+	if(!p) return NULL;
+	memset(p, 0, mem);
+	return p;
+}
+
+static void isi_update_busmem(struct isiInfo *bus, struct isiInfo *mem)
+{
+	size_t k;
+	size_t hs;
+	hs = bus->busdev.count;
+	for(k = 0; k < hs; k++) {
+		if(bus->busdev.table[k].t) {
+			bus->busdev.table[k].t->mem = mem;
+		}
+	}
+}
+
+int isi_is_memory(struct isiInfo const *item)
+{
+	return (item->id.objtype > 0x2000 && item->id.objtype < 0x2f00);
+}
+int isi_is_cpu(struct isiInfo const *item)
+{
+	return (item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU);
+}
+int isi_is_bus(struct isiInfo const *item)
+{
+	return (item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV);
+}
+
+int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, struct timespec mtime)
+{
+	if(!src || srcindex < -3) return -1;
+	struct isiInfo *dest = NULL;
+	if(srcindex == ISIAT_UP) {
+		dest = src->updev.t;
+	} else if(srcindex >= 0) {
+		isi_getindex_dev(src, srcindex, &dest);
+	} else return -1;
+	if(!dest || !dest->c->MsgIn) return -1;
+	return dest->c->MsgIn(dest, src, m, l, mtime);
+}
+
+int isi_deattach(struct isiInfo *item, int32_t itempoint)
+{
+	if(!item || itempoint < -3 || itempoint == ISIAT_APPEND) return ISIERR_INVALIDPARAM;
+	if(item->id.objtype < 0x2f00) return ISIERR_INVALIDPARAM; /* can't process weird things */
+	struct isiInfo *dev = NULL;
+	if(itempoint == ISIAT_UP) {
+		dev = item->updev.t;
+	} else if(itempoint == ISIAT_INSERTSTART) {
+		return ISIERR_NOTSUPPORTED;
+	} else if(isi_getindex_dev(item, itempoint, &dev)) {
+	}
+	return 0;
+}
+
+int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint)
 {
 	int e = 0;
-	if(!item || !dev) return -1;
-	if(item->id.objtype < 0x2f00) return -1;
-	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
-		if(dev->id.objtype > 0x2000 && dev->id.objtype < 0x2f00) {
-			if(item->c->QueryAttach) {
-				if((e = item->c->QueryAttach(item, dev))) {
-					return e;
-				}
+	if(!item || !dev) return ISIERR_INVALIDPARAM;
+	if(itempoint < -3 || devpoint < -3) return ISIERR_INVALIDPARAM;
+	if(item->id.objtype < 0x2f00) return ISIERR_INVALIDPARAM; /* can't process weird things */
+	if(isi_is_memory(dev)) { /* handle attaching memory */
+		if(item->c->QueryAttach) {
+			if((e = item->c->QueryAttach(item, itempoint, dev, devpoint))) {
+				return e;
 			}
-			item->mem = dev;
-			if(item->c->Attach) e = item->c->Attach(item, dev);
-			return e;
 		}
+		item->mem = dev;
+		if(isi_is_cpu(item) && item->c->Attach) item->c->Attach(item, itempoint, dev, devpoint);
+		if(isi_is_bus(item)) isi_update_busmem(item, item->mem);
+		return 0;
 	}
-	if(dev->id.objtype < 0x2f00) return -1;
+	if(dev->id.objtype < 0x2f00) return ISIERR_NOCOMPAT; /* can't attach weird things to other things */
 	if(item->c->QueryAttach) {
-		if((e = item->c->QueryAttach(item, dev))) {
+		if((e = item->c->QueryAttach(item, itempoint, dev, devpoint))) {
 			return e;
 		}
-	}
-	if(item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV) {
-	} else {
-		item->dndev = dev;
-	}
-	dev->updev = item;
-	if(item->id.objtype >= ISIT_CPU && item->id.objtype < ISIT_ENDCPU) {
-		dev->hostcpu = item;
-		dev->mem = item->mem;
-	} else {
-		dev->hostcpu = item->hostcpu;
-		dev->mem = item->mem;
-	}
-	if(item->c->Attach) item->c->Attach(item, dev);
-	if(dev->c->Attached) dev->c->Attached(dev, item);
-	if(dev->id.objtype >= ISIT_BUSDEV && dev->id.objtype < ISIT_ENDBUSDEV) {
-		size_t k;
-		size_t hs;
-		struct isiBusInfo *bus = (struct isiBusInfo*)dev;
-		hs = bus->busdev.count;
-		for(k = 0; k < hs; k++) {
-			if(bus->busdev.table[k]) {
-				bus->busdev.table[k]->mem = dev->mem;
-				bus->busdev.table[k]->hostcpu = dev->hostcpu;
-			}
+	} else if(!isi_is_bus(item)) return ISIERR_NOCOMPAT; /* can't attach random things to devices */
+	if(itempoint >= 0) {
+		if(!isi_getindex_dev(item, itempoint, 0)) {
+			return ISIERR_ATTACHINUSE;
 		}
 	}
+	if(devpoint >= 0) {
+		if(!isi_getindex_dev(dev, devpoint, 0)) {
+			return ISIERR_ATTACHINUSE;
+		}
+	}
+	int32_t iout = 0;
+	if(devpoint == ISIAT_APPEND) isi_appendindex_dev(dev, item, &iout);
+	else if(devpoint == ISIAT_UP || !isi_is_bus(dev)) dev->updev.t = item;
+	else if(devpoint == ISIAT_INSERTSTART) isi_insertindex_dev(dev, 0, item);
+	else isi_setindex_dev(dev, devpoint, item, itempoint);
+	if(itempoint == ISIAT_APPEND) isi_appendindex_dev(item, dev, &iout);
+	else if(itempoint == ISIAT_UP) item->updev.t = dev;
+	else if(itempoint == ISIAT_INSERTSTART) isi_insertindex_dev(item, 0, dev);
+	else isi_setindex_dev(item, itempoint, dev, devpoint);
+	if(item->c->Attach) item->c->Attach(item, itempoint, dev, devpoint);
+	if(dev->c->Attached) dev->c->Attached(dev, devpoint, item, itempoint);
+	dev->mem = item->mem;
+	if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
 	return 0;
 }
 
@@ -159,7 +235,7 @@ void isi_objtable_init()
 {
 	allobj.limit = 256;
 	allobj.count = 0;
-	allobj.table = (struct objtype**)malloc(allobj.limit * sizeof(void*));
+	allobj.table = (struct objtype**)isi_alloc(allobj.limit * sizeof(void*));
 }
 
 int isi_objtable_add(struct objtype *obj)
@@ -167,7 +243,7 @@ int isi_objtable_add(struct objtype *obj)
 	if(!obj) return -1;
 	void *n;
 	if(allobj.count >= allobj.limit) {
-		n = realloc(allobj.table, (allobj.limit + allobj.limit) * sizeof(void*));
+		n = isi_realloc(allobj.table, (allobj.limit + allobj.limit) * sizeof(void*));
 		if(!n) return -5;
 		allobj.limit += allobj.limit;
 		allobj.table = (struct objtype**)n;
@@ -219,7 +295,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 	case ISIT_DISK: objsize = sizeof(struct isiDisk); break;
 	case ISIT_MEM6416: objsize = sizeof(struct memory64x16); break;
 	case ISIT_CPU: objsize = sizeof(struct isiCPUInfo); break;
-	case ISIT_BUSDEV: objsize = sizeof(struct isiBusInfo); break;
+	case ISIT_BUSDEV: objsize = sizeof(struct isiInfo); break;
 	case ISIT_HARDWARE: objsize = sizeof(struct isiInfo); break;
 	}
 	if(objsize) {
@@ -235,7 +311,7 @@ int isi_create_object(int objtype, struct objtype **out)
 	struct objtype *ns;
 	size_t objsize = 0;
 	if(isi_get_type_size(objtype, &objsize)) return ISIERR_INVALIDPARAM;
-	ns = (struct objtype*)malloc(objsize);
+	ns = (struct objtype*)isi_alloc(objsize);
 	if(!ns) return ISIERR_NOMEM;
 	memset(ns, 0, objsize);
 	ns->id = ++maxsid; // TODO make "better" ID numbers?
@@ -285,23 +361,19 @@ int isi_premake_object(int objtype, struct isiConstruct **outcon, struct objtype
 		size_t sz = 0;
 		con->QuerySize(0, &sz);
 		if(sz) {
-			info->rvstate = malloc(sz);
-			memset(info->rvstate, 0, sz);
+			info->rvstate = isi_alloc(sz);
 		}
 		sz = 0;
 		con->QuerySize(1, &sz);
 		if(sz) {
-			info->svstate = malloc(sz);
-			memset(info->svstate, 0, sz);
+			info->svstate = isi_alloc(sz);
 		}
 	} else {
 		if(con->rvproto && con->rvproto->length) {
-			info->rvstate = malloc(con->rvproto->length);
-			memset(info->rvstate, 0, con->rvproto->length);
+			info->rvstate = isi_alloc(con->rvproto->length);
 		}
 		if(con->svproto && con->svproto->length) {
-			info->svstate = malloc(con->svproto->length);
-			memset(info->svstate, 0, con->svproto->length);
+			info->svstate = isi_alloc(con->svproto->length);
 		}
 	}
 	if(con->Init) {
@@ -374,7 +446,7 @@ int isi_init_contable()
 	struct isiConTable *t = &allcon;
 	t->limit = 32;
 	t->count = 0;
-	t->table = (struct isiConstruct**)malloc(t->limit * sizeof(void*));
+	t->table = (struct isiConstruct**)isi_alloc(t->limit * sizeof(void*));
 	return 0;
 }
 
@@ -383,7 +455,7 @@ int isi_contable_add(struct isiConstruct *obj)
 	if(!obj) return -1;
 	void *n;
 	if(allcon.count >= allcon.limit) {
-		n = realloc(allcon.table, (allcon.limit + allcon.limit) * sizeof(void*));
+		n = isi_realloc(allcon.table, (allcon.limit + allcon.limit) * sizeof(void*));
 		if(!n) return -5;
 		allcon.limit += allcon.limit;
 		allcon.table = (struct isiConstruct**)n;
@@ -440,24 +512,100 @@ int isi_get_name(uint32_t cid, const char **name)
 	return ISIERR_NOTFOUND;
 }
 
+static int isi_initindex_dev(struct isiInfo *item)
+{
+	item->busdev.limit = 1;
+	item->busdev.count = 0;
+	item->busdev.table = (struct isiConPoint*)isi_alloc(item->busdev.limit * sizeof(struct isiConPoint));
+	return 0;
+}
+
+static int isi_indexresize(struct isiInfo *item, size_t size)
+{
+	if(size <= item->busdev.limit) return 0;
+	void *n;
+	n = isi_realloc(item->busdev.table, size * sizeof(struct isiConPoint));
+	if(!n) return -5;
+	item->busdev.limit = size;
+	item->busdev.table = (struct isiConPoint*)n;
+	return 0;
+}
+
+static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev)
+{
+	return ISIERR_NOTSUPPORTED;
+}
+
+static int isi_appendindex_dev(struct isiInfo *item, struct isiInfo *d, int32_t *dindex)
+{
+	if(!item) return -1;
+	if(!item->busdev.limit || !item->busdev.table) isi_initindex_dev(item);
+	if(item->busdev.count >= item->busdev.limit) {
+		int r;
+		r = isi_indexresize(item, item->busdev.limit + item->busdev.limit);
+		if(r) return r;
+	}
+	int32_t x = item->busdev.count;
+	item->busdev.count++;
+	item->busdev.table[x].t = d;
+	item->busdev.table[x].i = 0;
+	if(dindex) *dindex = x;
+	return 0;
+}
+
+int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev)
+{
+	if(!dev) return -1;
+	if(index >= dev->busdev.count || index >= dev->busdev.limit) return -1;
+	if(!dev->busdev.table) return -1;
+	struct isiInfo *o = dev->busdev.table[index].t;
+	if(!o) return -1;
+	if(downdev) *downdev = o;
+	return 0;
+}
+
+static int isi_setindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo *downdev, int32_t downindex)
+{
+	if(!dev) return -1;
+	if(!dev->busdev.limit || !dev->busdev.table) isi_initindex_dev(dev);
+	if(index >= dev->busdev.limit) {
+		int r;
+		r = isi_indexresize(dev, index + 1);
+		if(r) return r;
+	}
+	if(dev->busdev.count < index + 1) dev->busdev.count = index + 1;
+	dev->busdev.table[index].t = downdev;
+	dev->busdev.table[index].i = downindex;
+	return 0;
+}
+
+static int isi_tableresize(struct isiDevTable *t, size_t size)
+{
+	if(size <= t->limit) return 0;
+	void *n;
+	n = isi_realloc(t->table, (size) * sizeof(void*));
+	if(!n) return -5;
+	t->limit = size;
+	t->table = (struct isiInfo**)n;
+	return 0;
+}
+
 int isi_inittable(struct isiDevTable *t)
 {
 	t->limit = 32;
 	t->count = 0;
-	t->table = (struct isiInfo**)malloc(t->limit * sizeof(void*));
+	t->table = (struct isiInfo**)isi_alloc(t->limit * sizeof(void*));
 	return 0;
 }
 
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d)
 {
 	if(!d) return -1;
-	void *n;
 	if(!t->limit || !t->table) isi_inittable(t);
 	if(t->count >= t->limit) {
-		n = realloc(t->table, (t->limit + t->limit) * sizeof(void*));
-		if(!n) return -5;
-		t->limit += t->limit;
-		t->table = (struct isiInfo**)n;
+		int r;
+		r = isi_tableresize(t, t->limit + t->limit);
+		if(r) return r;
 	}
 	t->table[t->count++] = d;
 	return 0;
