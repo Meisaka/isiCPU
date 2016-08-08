@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 #define ERR_M35_NONE 0
 #define ERR_M35_BUSY 1

@@ -31,4 +31,3 @@ include depends
 %.o: %.c Makefile
 	@echo "$< > CC > $@ ($*)"
 	@${CC} ${CFLAGS} -c $< -o $@
-

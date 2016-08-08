@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 struct Clock_rvstate {
 	uint16_t rate;

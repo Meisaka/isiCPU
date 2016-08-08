@@ -1,5 +1,5 @@
 
-#include "dcpuhw.h"
+#include "../dcpuhw.h"
 
 struct EEROM_rvstate {
 	uint16_t sz;
