@@ -15,6 +15,7 @@ void Disk_M35FD_Register();
 void EEROM_Register();
 void imva_Register();
 void speaker_Register();
+void KaiHIC_Register();
 
 void isi_register_objects()
 {
@@ -29,5 +30,6 @@ void isi_register_objects()
 	EEROM_Register();
 	imva_Register();
 	speaker_Register();
+	KaiHIC_Register();
 }
 

@@ -81,7 +81,7 @@ static inline uint16_t DCPU_derefB(int, struct DCPU *, isiram16);
 static int DCPU_setonfire(struct DCPU *);
 static inline void DCPU_skipref(int, struct DCPU *);
 static int DCPU_reset(struct isiInfo *);
-static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, uint16_t *, int, struct timespec);
+static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, int32_t lsindex, uint16_t *, int, struct timespec);
 static int DCPU_run(struct isiInfo *, struct timespec);
 static int DCPU_init(struct isiInfo *info);
 
@@ -156,7 +156,7 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->MODE = 0;
 	pr->cycl = 0;
 	pr->IQC = 0;
-	pr->msg = 0;
+	pr->msg = ISE_RESET;
 	if(!isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun)) {
 		pr->hwcount = pr->dai;
 	}
@@ -241,15 +241,15 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 	}
 }
 
-static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
-	if(msg[0] == 3) {
+	if(msg[0] == ISE_SREG) {
 		for(int i = 1; i < 8 && i < len; i++) {
 			pr->R[i - 1] = msg[i];
 		}
 		return 0;
-	} else if(msg[0] == 2) {
+	} else if(msg[0] == ISE_XINT) {
 		if(pr->IA) {
 			if(pr->IQC < 256) {
 				pr->IQU[pr->IQC++] = msg[1];
@@ -593,7 +593,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 				break;
 			case SOP_HWQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				pr->msg = 1;
+				pr->msg = ISE_QINT;
 				pr->dai = alu1.u;
 				if(isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun) == 0) {
 				} else {
@@ -607,7 +607,7 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 			case SOP_HWI:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				//pr->MODE |= DCPUMODE_EXTINT;
-				pr->msg = 2;
+				pr->msg = ISE_XINT;
 				pr->dai = alu1.u;
 				if(0 != (op = isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun))) {
 					if(op > 0) {

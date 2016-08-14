@@ -134,13 +134,13 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 	return 0;
 }
 
-static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, int len, struct timespec mtime)
+static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	if(len < 10) return -1;
 	switch(msg[0]) {
-	case 0: return Nya_LEM_Reset(info);
-	case 1: return 0;
-	case 2: return Nya_LEM_HWI(info, host, msg+2, mtime);
+	case ISE_RESET: return Nya_LEM_Reset(info);
+	case ISE_QINT: return 0;
+	case ISE_XINT: return Nya_LEM_HWI(info, host, msg+2, mtime);
 	default: break;
 	}
 	return 0;

@@ -541,9 +541,7 @@ readagain:
 			break;
 		}
 		if(info->id.objtype >= 0x2000) {
-			if(info->c->MsgIn) {
-				info->c->MsgIn(info, info->updev.t, (uint16_t*)(pm+2), 10, mtime);
-			}
+			isi_message_dev(info, -1, (uint16_t*)(pm+2), 10, mtime);
 		}
 	}
 		break;

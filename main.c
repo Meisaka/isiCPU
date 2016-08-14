@@ -189,6 +189,9 @@ int isi_addcpu()
 
 	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+
+	isi_make_object(isi_lookup_name("kaihic32"), (struct objtype**)&ninfo, 0, 0);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
 	if(binf) {
 		uint8_t ist[24];
 		ist[0] = 0;

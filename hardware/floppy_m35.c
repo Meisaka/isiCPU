@@ -126,7 +126,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			media->c->MsgIn(media, info, (uint16_t*)&dseek, 4, crun);
+			isi_message_dev(info, 0, (uint16_t*)&dseek, 4, crun);
 			dev->rwaddr = msg[4];
 			dev->oper = 1;
 			msg[1] = 1;
@@ -147,7 +147,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			media->c->MsgIn(media, info, (uint16_t*)&dseek, 4, crun);
+			isi_message_dev(info, 0, (uint16_t*)&dseek, 4, crun);
 			mc = dev->rwaddr = msg[4];
 			for(i = 0; i < 512; i++) {
 				dss->svbuf[i] = isi_hw_rdmem((isiram16)info->mem, mc);
@@ -222,7 +222,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */

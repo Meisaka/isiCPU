@@ -628,7 +628,7 @@ static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
 				} else if(etype == REDIS_CMDEXIT) {
 					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
 					uint16_t dm[4] = {0x22, ncmd->param, ncmd->param >> 16, 0};
-					disk->c->MsgIn(disk, NULL, dm, 3, mtime);
+					isi_message_dev(disk, -1, dm, 3, mtime);
 				}
 				break;
 			case ISIC_DISKWRITE:

@@ -109,7 +109,7 @@ typedef int (*isi_new_call)(struct isiInfo *, const uint8_t *, size_t);
 typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
 typedef int (*isi_control_call)(struct isiInfo *);
 typedef int (*isi_attach_call)(struct isiInfo *to, int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, uint16_t *, int, struct timespec mtime);
+typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime);
 
 struct isiConstruct {
 	uint32_t objtype;
@@ -327,6 +327,25 @@ int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode)
 #define ISIAT_APPEND -1
 #define ISIAT_INSERTSTART -2
 #define ISIAT_UP -3
+
+/* isi Message Signal Types */
+#define ISE_RESET 0
+#define ISE_QINT 1
+#define ISE_XINT 2
+#define ISE_SREG 3
+#define ISE_DPSI  0x10 /* parallel signaling */
+#define ISE_DSSI  0x11 /* sync serial (msb first) */
+#define ISE_DSSIR 0x12 /* sync serial (lsb first) */
+#define ISE_DASI  0x13 /* async serial (msb first) */
+#define ISE_DASIR 0x14 /* async serial (lsb first) */
+#define ISE_DWIOR 0x15 /* sync serial bus /w CSMA/CA (word lsb first, lowest takes presidence) */
+#define ISE_DWPKT 0x16 /* sync serial bus /w CSMA/CD (word lsb first) */
+#define ISE_DISKSEEK  0x20
+#define ISE_DISKWPRST 0x21
+#define ISE_DISKRESET 0x22
+/* 20xx internal/physical signalling */
+#define ISE_KEYDOWN 0x20E7
+#define ISE_KEYUP 0x20E8
 
 /* isi CPU control flags */
 #define ISICTL_DEBUG  ( 1 << 0 )

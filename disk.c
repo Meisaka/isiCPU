@@ -253,7 +253,7 @@ static int isi_write_disk(struct isiInfo *info)
 	return -1;
 }
 
-static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	if(info->id.objtype != ISIT_DISK) return -1;
 	struct isiDisk *disk = (struct isiDisk *)info;
@@ -261,7 +261,7 @@ static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 	struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
 	struct isiDiskSeekMsg *dsm = (struct isiDiskSeekMsg *)msg;
 	switch(msg[0]) {
-	case 0x0020:
+	case ISE_DISKSEEK:
 		if(dsm->block != sv->index) {
 			if(!rv->wrprotect && isi_test_disk(disk)) {
 				isi_writeread_disk(info, dsm->block);
@@ -270,10 +270,10 @@ static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			}
 		}
 		return 0;
-	case 0x0021:
+	case ISE_DISKWPRST:
 		if(!rv->wrprotect && isi_test_disk(disk)) isi_write_disk(info);
 		break;
-	case 0x0022:
+	case ISE_DISKRESET:
 		sv->index = (msg[2] << 16u) | msg[1];
 		memcpy(sv->dblock, sv->block, sizeof(sv->block));
 		break;

@@ -1,4 +1,12 @@
 
+0.21
+------
+
+ - new message call prototype
+ - added message type constants
+ - added HIC device
+ - changed remaining messaging calls to use `isi_message_dev` to send messages.
+
 0.20
 ------
 

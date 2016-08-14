@@ -52,7 +52,7 @@ static int HWM_Attached(struct isiInfo *info, int32_t point, struct isiInfo *dev
 	return 0;
 }
 
-static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int HWM_Query(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	int r;
 	r = 0;
@@ -71,26 +71,25 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, i
 
 	// call it in context
 	switch(msg[0]) {
-	case 0:
+	case ISE_RESET:
 		msg[1] = (uint16_t)(hs - 1);
 		isilog(L_DEBUG, "hwm-reset-all c=%ld\n", hs);
 		for(h = 1; h < hs; h++) {
 			dev = info->busdev.table[h].t;
 			if(dev->c->Reset) dev->c->Reset(dev);
-			if(dev->c->MsgIn) {
+			if(!isi_message_dev(info, h, msg, len, mtime)) {
 				isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name, h);
-				dev->c->MsgIn(dev, src, msg, len, mtime);
 			}
 		}
 		return 0;
-	case 1:
-	case 2:
+	case ISE_QINT:
+	case ISE_XINT:
 		if(h >= hs) {
 			isilog(L_DEBUG, "hwm: %ld out of range.\n", h);
 			break;
 		}
 		dev = info->busdev.table[h].t;
-		if(msg[0] == 1 && dev->meta->meta) {
+		if(msg[0] == ISE_QINT && dev->meta->meta) {
 			struct isidcpudev *mid = (struct isidcpudev *)dev->meta->meta;
 			msg[2] = (uint16_t)(mid->devid);
 			msg[3] = (uint16_t)(mid->devid >> 16);
@@ -99,9 +98,7 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, i
 			msg[6] = (uint16_t)(mid->mfgid >> 16);
 			r = 0;
 		}
-		if(dev->c->MsgIn) {
-			r = dev->c->MsgIn(dev, src, msg, len, mtime);
-		}
+		r = isi_message_dev(info, h, msg, len, mtime);
 		return r;
 	default:
 		break;

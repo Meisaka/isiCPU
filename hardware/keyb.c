@@ -85,19 +85,19 @@ static void Keyboard_KUp(struct LKBD *kb, int kc)
 	}
 }
 
-static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, int len, struct timespec mtime)
+static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct LKBD* kyb;
 	uint16_t iom[3];
 	kyb = (struct LKBD*)info->rvstate;
 	if(!kyb) return 0;
 	switch(msg[0]) {
-	case 2:
+	case ISE_XINT:
 		break; // Handle HWI
-	case 0x20E7:
+	case ISE_KEYDOWN:
 		Keyboard_KDown(kyb, msg[1]);
 		if(kyb->imsg) {
-			iom[0] = 2;
+			iom[0] = ISE_XINT;
 			iom[1] = 0;
 			iom[2] = kyb->imsg;
 			if(isi_message_dev(info, ISIAT_UP, iom, 3, mtime)) {
@@ -105,10 +105,10 @@ static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, uint16_t *
 			}
 		}
 		return 0;
-	case 0x20E8:
+	case ISE_KEYUP:
 		Keyboard_KUp(kyb, msg[1]);
 		if(kyb->imsg) {
-			iom[0] = 2;
+			iom[0] = ISE_XINT;
 			iom[1] = 0;
 			iom[2] = kyb->imsg;
 			if(isi_message_dev(info, ISIAT_UP, iom, 3, mtime)) {

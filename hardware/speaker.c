@@ -57,7 +57,7 @@ static int speaker_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 0;
 }
 
-static int speaker_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int speaker_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 	case 0: return 0; /* CPU finished reset */

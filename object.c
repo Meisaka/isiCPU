@@ -163,9 +163,11 @@ int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, s
 		dest = src->updev.t;
 	} else if(srcindex >= 0) {
 		isi_getindex_dev(src, srcindex, &dest);
+	} else if(srcindex == -1) {
+		dest = src;
 	} else return -1;
 	if(!dest || !dest->c->MsgIn) return -1;
-	return dest->c->MsgIn(dest, src, m, l, mtime);
+	return dest->c->MsgIn(dest, src, srcindex, m, l, mtime);
 }
 
 int isi_deattach(struct isiInfo *item, int32_t itempoint)
