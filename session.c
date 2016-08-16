@@ -579,6 +579,22 @@ readagain:
 		}
 		session_write_msg(ses);
 		break;
+	case ISIM_TNEWOBJ:
+		if(l < 8) break;
+		pr[0] = ISIMSG(R_TNEWOBJ, 0, 16);
+		pr[1] = pm[1];
+		pr[2] = 0;
+		pr[3] = pm[2];
+		{
+			struct objtype *a;
+			a = 0;
+			pr[4] = (uint32_t)isi_make_object(pm[2], &a, ses->in+12, l - 8);
+			if(a) {
+				pr[2] = a->id;
+			}
+		}
+		session_write_msg(ses); /* TODO multisession */
+		break;
 	case ISIM_TLOADOBJ:
 		if(l < 16) break;
 		pr[2] = (uint32_t)persist_load_object(ses->id.id, pm[2], *(uint64_t*)(pm+3), pm[1]);

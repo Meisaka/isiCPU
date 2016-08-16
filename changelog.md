@@ -1,4 +1,9 @@
 
+0.21.2
+------
+
+ - transacted create object implemented
+
 0.21.1
 ------
 

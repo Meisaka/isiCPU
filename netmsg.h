@@ -17,6 +17,7 @@
 #define ISIM_STOP       (0x025)
 #define ISIM_ATTACHAT   (0x026)
 
+#define ISIM_TNEWOBJ    (0x030)
 #define ISIM_TLOADOBJ   (0x03A)
 
 #define ISIM_MSGOBJ     (0x080)
@@ -40,6 +41,7 @@
 #define ISIM_R_START    (0x224)
 #define ISIM_R_STOP     (0x225)
 
+#define ISIM_R_TNEWOBJ  (0x230)
 #define ISIM_R_TLOADOBJ (0x23A)
 
 #define _ISIMSG(m) m
