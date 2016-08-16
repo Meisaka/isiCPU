@@ -102,25 +102,18 @@ static int DCPU_QueryAttach(struct isiInfo *info, int32_t point, struct isiInfo 
 {
 	if(!info || !dev) return ISIERR_INVALIDPARAM;
 	if(dev->id.objtype == ISIT_MEM6416) return 0;
+	if(point == ISIAT_UP) return 0;
 	return ISIERR_NOCOMPAT;
 }
 static int DCPU_Attach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
 	if(!info || !dev) return ISIERR_INVALIDPARAM;
-	if(dev->id.objtype == ISIT_MEM6416) {
-		struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
-		pr->memptr = (isiram16)dev;
-	}
-	return ISIERR_INVALIDPARAM;
+	return 0;
 }
 static int DCPU_Attached(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
 	if(!info || !dev) return ISIERR_INVALIDPARAM;
-	if(dev->id.objtype == ISIT_MEM6416) {
-		struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
-		pr->memptr = (isiram16)dev->mem;
-	}
-	return ISIERR_INVALIDPARAM;
+	return 0;
 }
 
 static struct isiInfoCalls DCPUCalls = {
@@ -142,6 +135,7 @@ static int DCPU_init(struct isiInfo *info)
 static int DCPU_reset(struct isiInfo *info)
 {
 	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
+	pr->memptr = (isiram16)info->mem;
 	int i;
 	for(i = 0; i < 8; i++)
 	{

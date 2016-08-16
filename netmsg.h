@@ -20,6 +20,7 @@
 #define ISIM_TLOADOBJ   (0x03A)
 
 #define ISIM_MSGOBJ     (0x080)
+#define ISIM_MSGCHAN    (0x081)
 #define ISIM_SYNCMEM16  (0x0E0)
 #define ISIM_SYNCMEM32  (0x0E1)
 #define ISIM_SYNCRVS    (0x0E2)

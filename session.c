@@ -21,6 +21,57 @@ static int session_handle_rd(struct isiSession *ses, struct timespec mtime);
 static int session_handle_async(struct isiSession *ses, struct sescommandset *cmd, int result);
 static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime);
 
+struct cemei_svstate {
+	uint32_t sessionid;
+	uint32_t index;
+	struct isiSession *ses;
+};
+ISIREFLECT(struct cemei_svstate,
+	ISIR(cemei_svstate, uint32_t, sessionid)
+	ISIR(cemei_svstate, uint32_t, index)
+)
+static int cemei_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+{
+	struct cemei_svstate *dev = (struct cemei_svstate*)info->svstate;
+	if(!dev->sessionid || !dev->ses || dev->ses->id.objtype != ISIT_SESSION || dev->ses->id.id != dev->sessionid) return -1;
+	if(lsindex == -1) return 0;
+	return 0;
+}
+
+static int cemei_queryattach(struct isiInfo *to, int32_t topoint, struct isiInfo *dev, int32_t frompoint)
+{
+	if(topoint == ISIAT_UP) return ISIERR_NOCOMPAT;
+	return 0;
+}
+
+static struct isiInfoCalls CEMEI_Calls = {
+	.QueryAttach = cemei_queryattach,
+	.MsgIn = cemei_msgin,
+};
+static int cemei_init(struct isiInfo *info)
+{
+	info->c = &CEMEI_Calls;
+	return 0;
+}
+static int cemei_new(struct isiInfo *info, const uint8_t *cfg, size_t lcfg)
+{
+	return 0;
+}
+
+static uint32_t cemei_meta[] = {0,0,0,0};
+static struct isiConstruct CEMEI_Con = {
+	.objtype = ISIT_CEMEI,
+	.name = "CEMEI",
+	.desc = "Message Exchange Interface",
+	.Init = cemei_init,
+	.New = cemei_new,
+	.rvproto = NULL,
+	.svproto = &ISIREFNAME(struct cemei_svstate),
+	.meta = &cemei_meta
+};
+void cemei_register() {
+	isi_register(&CEMEI_Con);
+}
 int makeserver(int portnumber)
 {
 	int fdsvr, i;
@@ -468,6 +519,14 @@ readagain:
 		pr[0] = ISIMSG(R_ATTACH, 0, 8);
 		pr[1] = pm[1];
 		pr[2] = (uint32_t)ISIERR_NOTSUPPORTED;
+		{
+			struct objtype *a;
+			if(isi_find_obj(pm[1], &a)) {
+				pr[2] = (uint32_t)ISIERR_NOTFOUND;
+			} else {
+				pr[2] = (uint32_t)isi_deattach((struct isiInfo*)a, (int32_t)pm[2]);
+			}
+		}
 		session_write_msg(ses);
 		break;
 	case ISIM_START:
@@ -540,7 +599,18 @@ readagain:
 			isilog(L_INFO, "net-msg: [%08x]: not found [%08x]\n", ses->id.id, pm[1]);
 			break;
 		}
-		if(info->id.objtype >= 0x2000) {
+		if(info->id.objtype == ISIT_CEMEI && (((uint16_t*)(pm+2))[0] == 0xffff)) {
+			struct cemei_svstate *cem = (struct cemei_svstate*)info->svstate;
+			if(cem->sessionid && cem->ses) {
+				if(cem->ses->id.objtype == ISIT_SESSION && cem->ses->id.id == cem->sessionid) {
+					cem->ses->ccmei = NULL;
+					cem->ses = NULL;
+					cem->sessionid = 0;
+				}
+			}
+			cem->ses = ses;
+			cem->sessionid = ses->id.id;
+		} else if(info->id.objtype >= 0x2000) {
 			isi_message_dev(info, -1, (uint16_t*)(pm+2), 10, mtime);
 		}
 	}

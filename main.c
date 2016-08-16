@@ -174,7 +174,6 @@ int isi_addcpu()
 	isi_make_object(isi_lookup_name("dcpu"), (struct objtype**)&cpu, 0, 0);
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_TRACE | ISICTL_STEP) : 0;
 	isi_make_object(isi_lookup_name("memory_16x64k"), (struct objtype**)&nmem, 0, 0);
-	isi_attach((struct isiInfo*)cpu, 0, (struct isiInfo*)nmem, ISIAT_APPEND);
 	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
 	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND);
 	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP);

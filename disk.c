@@ -293,6 +293,16 @@ static int isi_delete_disk(struct isiInfo *info)
 	return 0;
 }
 
+int isi_disk_isreadonly(struct isiInfo *disk)
+{
+	if(!disk) return -1;
+	if(disk->id.objtype != ISIT_DISK) {
+		return -1;
+	}
+	struct disk_rvstate *rv = (struct disk_rvstate *)disk->rvstate;
+	return (rv->wrprotect != 0);
+}
+
 int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 {
 	if(!disk || !blockaddr) return -1;

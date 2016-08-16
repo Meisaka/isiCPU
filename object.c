@@ -8,8 +8,8 @@ struct isiObjTable allobj;
 
 static uint32_t maxsid = 0;
 
-static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev);
-static int isi_appendindex_dev(struct isiInfo *dev, struct isiInfo *downdev, int32_t *downindexout);
+static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev, int32_t rindex);
+static int isi_appendindex_dev(struct isiInfo *dev, struct isiInfo *downdev, int32_t *downindexout, int32_t rindex);
 static int isi_setindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo *downdev, int32_t downindex);
 
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit)
@@ -180,6 +180,35 @@ int isi_deattach(struct isiInfo *item, int32_t itempoint)
 	} else if(itempoint == ISIAT_INSERTSTART) {
 		return ISIERR_NOTSUPPORTED;
 	} else if(isi_getindex_dev(item, itempoint, &dev)) {
+		return ISIERR_FAIL;
+	}
+	int32_t rai;
+	if(itempoint == ISIAT_UP) {
+		rai = item->updev.i;
+		item->updev.t = NULL;
+		item->updev.i = -1;
+	} else if(itempoint >= 0) {
+		rai = item->busdev.table[itempoint].i; /* getindex_dev should make sure this is valid */
+		item->busdev.table[itempoint].t = NULL;
+		item->busdev.table[itempoint].i = -1;
+		/* collapse empty space at end of table */
+		for(int i = item->busdev.count; i-->0 && !item->busdev.table[i].t; item->busdev.count--);
+	} else {
+		isilog(L_WARN, "invalid local deattach point A=%d", itempoint);
+		rai = -1;
+	}
+	isilog(L_DEBUG, "deattach call A=%d B=%d\n", itempoint, rai);
+	if(dev->id.objtype < 0x2f00) return 0; /* weird thing, we're done */
+	if(rai == ISIAT_UP) {
+		dev->updev.t = NULL;
+		dev->updev.i = -1;
+	} else if(rai >= 0 && !isi_getindex_dev(dev, rai, NULL)) {
+		dev->busdev.table[rai].t = NULL;
+		dev->busdev.table[rai].i = -1;
+		/* collapse empty space at end of table */
+		for(int i = dev->busdev.count; i-->0 && !dev->busdev.table[i].t; dev->busdev.count--);
+	} else {
+		isilog(L_WARN, "invalid remote deattach point A=%d B=%d", itempoint, rai);
 	}
 	return 0;
 }
@@ -207,6 +236,11 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 			return e;
 		}
 	} else if(!isi_is_bus(item)) return ISIERR_NOCOMPAT; /* can't attach random things to devices */
+	if(dev->c->QueryAttach) { /* test the other device too */
+		if((e = dev->c->QueryAttach(dev, devpoint, item, itempoint))) {
+			return e;
+		}
+	}
 	if(itempoint >= 0) {
 		if(!isi_getindex_dev(item, itempoint, 0)) {
 			return ISIERR_ATTACHINUSE;
@@ -218,18 +252,37 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 		}
 	}
 	int32_t iout = 0;
-	if(devpoint == ISIAT_APPEND) isi_appendindex_dev(dev, item, &iout);
-	else if(devpoint == ISIAT_UP || !isi_is_bus(dev)) dev->updev.t = item;
-	else if(devpoint == ISIAT_INSERTSTART) isi_insertindex_dev(dev, 0, item);
-	else isi_setindex_dev(dev, devpoint, item, itempoint);
-	if(itempoint == ISIAT_APPEND) isi_appendindex_dev(item, dev, &iout);
-	else if(itempoint == ISIAT_UP) item->updev.t = dev;
-	else if(itempoint == ISIAT_INSERTSTART) isi_insertindex_dev(item, 0, dev);
-	else isi_setindex_dev(item, itempoint, dev, devpoint);
+	int32_t *iptr = 0;
+	if(devpoint == ISIAT_APPEND) {
+		isi_appendindex_dev(dev, item, &iout, itempoint);
+		iptr = &dev->busdev.table[iout].i;
+		devpoint = iout;
+	} else if(devpoint == ISIAT_UP || !isi_is_bus(dev)) {
+		dev->updev.t = item;
+		dev->updev.i = itempoint;
+		iptr = &dev->updev.i;
+	} else if(devpoint == ISIAT_INSERTSTART) {
+		isi_insertindex_dev(dev, 0, item, itempoint);
+		iptr = &dev->busdev.table[0].i;
+		devpoint = 0;
+	} else {
+		isi_setindex_dev(dev, devpoint, item, itempoint);
+	}
+	if(itempoint == ISIAT_APPEND) {
+		isi_appendindex_dev(item, dev, &iout, devpoint);
+		if(iptr) *iptr = iout;
+	} else if(itempoint == ISIAT_UP) {
+		item->updev.t = dev;
+		item->updev.i = devpoint;
+	} else if(itempoint == ISIAT_INSERTSTART) {
+		isi_insertindex_dev(item, 0, dev, devpoint);
+	} else isi_setindex_dev(item, itempoint, dev, devpoint);
+	if(item->mem) {
+		dev->mem = item->mem;
+		if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
+	}
 	if(item->c->Attach) item->c->Attach(item, itempoint, dev, devpoint);
 	if(dev->c->Attached) dev->c->Attached(dev, devpoint, item, itempoint);
-	dev->mem = item->mem;
-	if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
 	return 0;
 }
 
@@ -294,6 +347,7 @@ int isi_get_type_size(int objtype, size_t *sz)
 	case ISIT_NONE: return ISIERR_NOTFOUND;
 	case ISIT_SESSION: objsize = sizeof(struct isiSession); break;
 	case ISIT_NETSYNC: objsize = sizeof(struct isiNetSync); break;
+	case ISIT_CEMEI: objsize = sizeof(struct isiInfo); break;
 	case ISIT_DISK: objsize = sizeof(struct isiDisk); break;
 	case ISIT_MEM6416: objsize = sizeof(struct memory64x16); break;
 	case ISIT_CPU: objsize = sizeof(struct isiCPUInfo); break;
@@ -533,12 +587,12 @@ static int isi_indexresize(struct isiInfo *item, size_t size)
 	return 0;
 }
 
-static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev)
+static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev, int32_t rindex)
 {
 	return ISIERR_NOTSUPPORTED;
 }
 
-static int isi_appendindex_dev(struct isiInfo *item, struct isiInfo *d, int32_t *dindex)
+static int isi_appendindex_dev(struct isiInfo *item, struct isiInfo *d, int32_t *dindex, int32_t rindex)
 {
 	if(!item) return -1;
 	if(!item->busdev.limit || !item->busdev.table) isi_initindex_dev(item);
@@ -550,7 +604,7 @@ static int isi_appendindex_dev(struct isiInfo *item, struct isiInfo *d, int32_t 
 	int32_t x = item->busdev.count;
 	item->busdev.count++;
 	item->busdev.table[x].t = d;
-	item->busdev.table[x].i = 0;
+	item->busdev.table[x].i = rindex;
 	if(dindex) *dindex = x;
 	return 0;
 }

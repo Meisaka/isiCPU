@@ -1,4 +1,12 @@
 
+0.21.1
+------
+
+ - `deattach` implemented
+ - fix a few bugs with `attach`
+ - fix, m35fd now reports status changes
+ - wip, adding external message forwarding "device"
+
 0.21
 ------
 

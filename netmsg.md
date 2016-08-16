@@ -44,6 +44,7 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x026 |    16 |   16 |   C>S    | attach with bus insert object B to A<br>`uint32 id_A`<br>`uint32 id_B`<br>`int32 at_A`<br>`int32 at_B`
 | 0x03A |    16 |   16 | C>S, S>S | transacted load object<br>`uint32 txid`<br>`uint32 classid`<br>`uint64 uuid`
 | 0x080 |     6 | 1300 |   Any    | send object message<br>`uint32 id`<br>`uint16 msg[ (len - 4) | 2 ]`
+| 0x081 |     6 | 1300 |   Any    | send channel message<br>`uint32 chanid`<br>`uint16 msg[ (len - 4) | 2 ]` | requires subscribed message exchange.
 | 0x0E0 |     6 | 1300 | S>C, S>S | sync memory a16<br>`uint32 id`<br>`{`<br>`uint16 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
 | 0x0E1 |     8 | 1300 | S>C, S>S | sync memory a32<br>`uint32 id`<br>`{`<br>`uint32 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
 | 0x0E2 |     4 | 1300 | S>C, S>S | sync run volitile state <br>`uint32 id`<br> `uint8 data[len - 4]`

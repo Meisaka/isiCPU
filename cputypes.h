@@ -48,6 +48,7 @@ struct isiSession {
 	void * istate;
 	struct timespec rqtimeout;
 	struct sescommandset *cmdq;
+	struct isiInfo *ccmei;
 	uint32_t cmdqstart;
 	uint32_t cmdqend;
 	uint32_t cmdqlimit;
@@ -250,6 +251,7 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 int isi_text_dec(const char *text, int len, int limit, void *vv, int olen);
 int isi_disk_getblock(struct isiInfo *disk, void **blockaddr);
 int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex);
+int isi_disk_isreadonly(struct isiInfo *disk);
 int isi_find_bin(uint64_t diskid, char **nameout);
 size_t isi_fsize(const char *path);
 int isi_fname_id(const char *fname, uint64_t *id);
@@ -361,6 +363,7 @@ int persist_disk(struct isiInfo *info, uint32_t rdblk, uint32_t wrblk, int mode)
 #define ISIT_NETSYNC   0x1001
 #define ISIT_PRELOAD   0x1111
 #define ISIT_MEM6416   0x2001
+#define ISIT_CEMEI     0x2fee /* channelized external message exchange interface */
 #define ISIT_DISK      0x2fff
 #define ISIT_DCPU      0x3001
 /* isi Class ranges */
