@@ -541,11 +541,15 @@ readagain:
 			if(isi_find_obj(pm[1], (struct objtype**)&a)) {
 				pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			} else if(a->id.objtype >= 0x3000 && a->id.objtype < 0x3fff) {
-				isi_push_dev(&allcpu, a);
-				if(a->c->Reset) a->c->Reset(a);
-				fetchtime(&a->nrun);
-				isilog(L_INFO, "net-session: enabling CPU\n");
-				pr[2] = 0;
+				if(a->c->RunCycles) pr[2] = 0;
+				if(a->c->Reset) {
+					pr[2] = (uint32_t)a->c->Reset(a);
+				}
+				if(!pr[2]) {
+					isi_push_dev(&allcpu, a);
+					fetchtime(&a->nrun);
+					isilog(L_INFO, "net-session: enabling CPU\n");
+				}
 			} else {
 				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
 			}
