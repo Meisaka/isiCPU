@@ -32,6 +32,7 @@ static char * endf = 0;
 static char * redisaddr = 0;
 static char * diskf = 0;
 static int listenportnumber = 58704;
+static int verblevel = L_INFO;
 
 int fdlog = STDERR_FILENO;
 int usefs = 0;
@@ -65,19 +66,25 @@ void showdisasm_dcpu(const struct isiInfo *info);
 void showdiag_dcpu(const struct isiInfo* info, int fmt);
 
 static const char * const gsc_usage =
-"Usage:\n%s [-Desr] [-p <portnum>] [-B <binid>] [-d <diskid>]\n%s -E <file>\n"
+"Usage:\n%s [-DFersv] [-p <portnum>] [-B <binid>] [-d <diskid>] [-R <connection>]\n%s -E <file>\n"
 "Options:\n"
 " -e  Assume file pointed to by <binid> is little-endian\n"
 " -s  Enable server, if specified without -r then fork to background.\n"
 " -p <portnum>  Listen on <portnum> instead of the default (valid with -s)\n"
 " -r  Run interactively.\n"
+" -v  increate verbosity, use multiple times to increase levels\n"
+" -F  allow file system operations\n"
 " -D  Enable debugging and single stepping DCPU\n"
 " -B <binid>  Load file with <binid> into DCPU memory starting at 0x0000.\n"
 "      File is assmued to contain 16 bit words, 2 octets each in big-endian\n"
 "      Use the -e option to load little-endian files.\n"
 " -d <diskid>  Load disk with <diskid> into the default floppy drive.\n"
 " -l  List file IDs then exit.\n"
-" -E <file>  Flip the bytes in each 16 bit word of <file> then exit.\n";
+" -E <file>  Flip the bytes in each 16 bit word of <file> then exit.\n"
+" -R <connection>  Connect to a redis database on startup\n"
+"     where <connection> is an address[:port], port is optional. The address\n"
+"     may be enclosed in brackets [] to include colon seperated IPv6 addresses\n"
+;
 
 #define ISILOGBUFFER 4096
 static char logwrout[ISILOGBUFFER];
@@ -94,6 +101,7 @@ void isilog(int level, const char *format, ...)
 {
 	va_list vl;
 	int r;
+	if(level > verblevel) return;
 	va_start(vl, format);
 	r = vsnprintf(logwrout, ISILOGBUFFER, format, vl);
 	if(r < 0) {
@@ -388,6 +396,9 @@ static int parse_args(int argc, char**argv)
 					break;
 				case 'r':
 					rqrun = 1;
+					break;
+				case 'v':
+					verblevel++;
 					break;
 				case 'l':
 					isi_scan_dir();

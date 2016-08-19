@@ -257,10 +257,14 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 		isi_appendindex_dev(dev, item, &iout, itempoint);
 		iptr = &dev->busdev.table[iout].i;
 		devpoint = iout;
-	} else if(devpoint == ISIAT_UP || !isi_is_bus(dev)) {
+	} else if(devpoint == ISIAT_UP) {
 		dev->updev.t = item;
 		dev->updev.i = itempoint;
 		iptr = &dev->updev.i;
+		if(item->mem) {
+			dev->mem = item->mem;
+			if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
+		}
 	} else if(devpoint == ISIAT_INSERTSTART) {
 		isi_insertindex_dev(dev, 0, item, itempoint);
 		iptr = &dev->busdev.table[0].i;
@@ -277,10 +281,6 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 	} else if(itempoint == ISIAT_INSERTSTART) {
 		isi_insertindex_dev(item, 0, dev, devpoint);
 	} else isi_setindex_dev(item, itempoint, dev, devpoint);
-	if(item->mem) {
-		dev->mem = item->mem;
-		if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
-	}
 	if(item->c->Attach) item->c->Attach(item, itempoint, dev, devpoint);
 	if(dev->c->Attached) dev->c->Attached(dev, devpoint, item, itempoint);
 	return 0;

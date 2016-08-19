@@ -52,6 +52,13 @@ void KaiHIC_Register()
 	isi_register(&KaiHIC_Con32);
 }
 
+static int KaiHIC_QueryAttach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
+{
+	if(!dev || !info) return -1;
+	if(dev->id.objtype < 0x2f00) return -1;
+	return 0;
+}
+
 static int KaiHIC_Reset(struct isiInfo *info)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)info->rvstate;
@@ -216,6 +223,7 @@ static int KaiHIC_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsind
 }
 
 static struct isiInfoCalls KaiHIC_Calls = {
+	.QueryAttach = KaiHIC_QueryAttach,
 	.Reset = KaiHIC_Reset, /* power on reset */
 	.MsgIn = KaiHIC_MsgIn, /* message from CPU or network */
 	.RunCycles = KaiHIC_Tick, /* scheduled runtime */

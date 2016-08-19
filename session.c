@@ -33,8 +33,14 @@ ISIREFLECT(struct cemei_svstate,
 static int cemei_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
 {
 	struct cemei_svstate *dev = (struct cemei_svstate*)info->svstate;
-	if(!dev->sessionid || !dev->ses || dev->ses->id.objtype != ISIT_SESSION || dev->ses->id.id != dev->sessionid) return -1;
-	if(lsindex == -1) return 0;
+	struct isiSession *ses = dev->ses;
+	if(!dev->sessionid || !ses || ses->id.objtype != ISIT_SESSION || ses->id.id != dev->sessionid) return ISIERR_FAIL;
+	if(lsindex < 0) return 0;
+	uint32_t *pr = (uint32_t*)ses->out;
+	memcpy(pr+2, msg, len * 2);
+	pr[0] = ISIMSG(MSGCHAN, 0, 4 + (len * 2));
+	pr[1] = (uint32_t)lsindex;
+	session_write_msg(ses);
 	return 0;
 }
 
@@ -632,6 +638,22 @@ readagain:
 			cem->sessionid = ses->id.id;
 		} else if(info->id.objtype >= 0x2000) {
 			isi_message_dev(info, -1, (uint16_t*)(pm+2), 10, mtime);
+		}
+	}
+		break;
+	case ISIM_MSGCHAN:
+		if(l < 6) break;
+	{
+		int32_t chan;
+		chan = (int32_t)pm[1];
+		if(chan < 0) {
+			isilog(L_INFO, "net-msg: bad channel (%d)\n", chan);
+			break;
+		}
+		if(ses->ccmei) {
+			isi_message_dev(ses->ccmei, chan, (uint16_t*)(pm+2), (l - 4) / 2, mtime);
+		} else {
+			isilog(L_INFO, "net-session: [%08x]: no CEMEI subscribed\n", ses->id.id);
 		}
 	}
 		break;

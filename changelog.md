@@ -1,4 +1,12 @@
 
+0.22
+------
+
+ - Added verbose cli flag, reduced verbosity by default.
+ - added more entries to cli help output.
+ - fix, attaching some things, incluing HIC
+ - added, message channel exchange
+
 0.21.2
 ------
 
