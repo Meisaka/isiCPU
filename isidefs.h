@@ -39,6 +39,8 @@
 #define ISIAT_APPEND -1
 #define ISIAT_INSERTSTART -2
 #define ISIAT_UP -3
+#define ISIAT_SESSION -4
+#define ISIAT_LIMIT -4
 
 /* isi Message Signal Types */
 #define ISE_RESET 0
@@ -56,8 +58,13 @@
 #define ISE_DISKWPRST 0x21
 #define ISE_DISKRESET 0x22
 /* 20xx internal/physical signalling */
+#define ISE_CONFIG  0x2000
+#define ISE_AXIS8   0x20E0
+#define ISE_AXIS16  0x20E1
 #define ISE_KEYDOWN 0x20E7
-#define ISE_KEYUP 0x20E8
+#define ISE_KEYUP   0x20E8
+
+#define ISE_SUBSCRIBE 0xFFFF
 
 #endif
 

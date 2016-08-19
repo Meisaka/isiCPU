@@ -116,6 +116,45 @@ int makeserver(int portnumber)
 	return 0;
 }
 
+int isi_message_ses(struct isiSessionRef *sr, uint32_t oid, uint16_t *msg, int len)
+{
+	if(!sr->id) {
+		isilog(L_DEBUG, "msg-ses: session not set\n");
+		return -1;
+	}
+	struct isiSession *s = NULL;
+	if(sr->index >= allses.count || 0 == (s = allses.table[sr->index]) || sr->id != s->id.id) {
+		int nindex = -1;
+		/* index is bad, try and find it again */
+		for(int i = 0; i < allses.count; i++) {
+			if(0 != (s = allses.table[i])) {
+				if(s->id.id == sr->id) {
+					nindex = i;
+					break;
+				}
+			}
+		}
+		if(nindex == -1) {
+			/* if not found, the session went away */
+			sr->id = 0;
+			sr->index = 0;
+			isilog(L_INFO, "msg-ses: Session find failed\n");
+			return -1;
+		}
+	}
+	if(!s || s->id.objtype != ISIT_SESSION) {
+		isilog(L_WARN, "msg-ses: Session type invalid\n");
+		return -1; /* just in case */
+	}
+	uint32_t *pr = (uint32_t*)s->out;
+	if((len * 2) > (1300 - 4)) len = (1300 - 4) / 2;
+	pr[0] = ISIMSG(MSGOBJ, 0, 4 + (len * 2));
+	pr[1] = oid;
+	memcpy(pr+2, msg, len * 2);
+	session_write_msg(s);
+	return 0;
+}
+
 void isi_init_sestable()
 {
 	struct isiSessionTable *t = &allses;
@@ -167,6 +206,11 @@ int isi_delete_ses(struct isiSession *s)
 		i++;
 	}
 	if(s->in || s->out) shutdown(s->sfd, SHUT_RDWR); /* shutdown on buffered streams */
+	if(s->ccmei && s->ccmei->id.objtype == ISIT_CEMEI && s->ccmei->svstate) {
+		struct cemei_svstate *dev = (struct cemei_svstate*)s->ccmei->svstate;
+		dev->ses = NULL;
+		dev->sessionid = 0;
+	}
 	close(s->sfd);
 	free(s->in);
 	free(s->out);
@@ -631,18 +675,25 @@ readagain:
 			isilog(L_INFO, "net-msg: [%08x]: not found [%08x]\n", ses->id.id, pm[1]);
 			break;
 		}
-		if(info->id.objtype == ISIT_CEMEI && (((uint16_t*)(pm+2))[0] == 0xffff)) {
-			struct cemei_svstate *cem = (struct cemei_svstate*)info->svstate;
-			if(cem->sessionid && cem->ses) {
-				if(cem->ses->id.objtype == ISIT_SESSION && cem->ses->id.id == cem->sessionid) {
-					cem->ses->ccmei = NULL;
-					cem->ses = NULL;
-					cem->sessionid = 0;
+		if(((uint16_t*)(pm+2))[0] == ISE_SUBSCRIBE) {
+			if(info->id.objtype == ISIT_CEMEI) {
+				struct cemei_svstate *cem = (struct cemei_svstate*)info->svstate;
+				if(cem->sessionid && cem->ses) {
+					if(cem->ses->id.objtype == ISIT_SESSION && cem->ses->id.id == cem->sessionid) {
+						cem->ses->ccmei = NULL;
+						cem->ses = NULL;
+						cem->sessionid = 0;
+					}
 				}
+				cem->ses = ses;
+				cem->sessionid = ses->id.id;
+				ses->ccmei = info;
+			} else if(info->id.objtype >= 0x2f00) {
+				isilog(L_INFO, "net-session: [%08x]: EMEI subscribe\n", ses->id.id);
+				info->sesref.id = ses->id.id;
+				info->sesref.index = 0;
 			}
-			cem->ses = ses;
-			cem->sessionid = ses->id.id;
-		} else if(info->id.objtype >= 0x2000) {
+		} else if(info->id.objtype >= 0x2f00) {
 			isi_message_dev(info, -1, (uint16_t*)(pm+2), 10, mtime);
 		}
 	}

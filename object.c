@@ -11,6 +11,7 @@ static uint32_t maxsid = 0;
 static int isi_insertindex_dev(struct isiInfo *dev, int32_t index, struct isiInfo *downdev, int32_t rindex);
 static int isi_appendindex_dev(struct isiInfo *dev, struct isiInfo *downdev, int32_t *downindexout, int32_t rindex);
 static int isi_setindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo *downdev, int32_t downindex);
+int isi_message_ses(struct isiSessionRef *sr, uint32_t oid, uint16_t *msg, int len);
 
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit)
 {
@@ -157,22 +158,26 @@ int isi_is_bus(struct isiInfo const *item)
 
 int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, struct timespec mtime)
 {
-	if(!src || srcindex < -3) return -1;
+	if(!src || srcindex < ISIAT_LIMIT) return -1;
 	struct isiInfo *dest = NULL;
+	int32_t lsi = srcindex;
 	if(srcindex == ISIAT_UP) {
 		dest = src->updev.t;
+		lsi = src->updev.i;
+	} else if(srcindex == ISIAT_SESSION) {
+		return isi_message_ses(&src->sesref, src->id.id, m, l);
 	} else if(srcindex >= 0) {
-		isi_getindex_dev(src, srcindex, &dest);
+		isi_getindex_devi(src, srcindex, &dest, &lsi);
 	} else if(srcindex == -1) {
 		dest = src;
 	} else return -1;
 	if(!dest || !dest->c->MsgIn) return -1;
-	return dest->c->MsgIn(dest, src, srcindex, m, l, mtime);
+	return dest->c->MsgIn(dest, src, lsi, m, l, mtime);
 }
 
 int isi_deattach(struct isiInfo *item, int32_t itempoint)
 {
-	if(!item || itempoint < -3 || itempoint == ISIAT_APPEND) return ISIERR_INVALIDPARAM;
+	if(!item || itempoint < ISIAT_LIMIT || itempoint == ISIAT_APPEND) return ISIERR_INVALIDPARAM;
 	if(item->id.objtype < 0x2f00) return ISIERR_INVALIDPARAM; /* can't process weird things */
 	struct isiInfo *dev = NULL;
 	if(itempoint == ISIAT_UP) {
@@ -217,7 +222,8 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 {
 	int e = 0;
 	if(!item || !dev) return ISIERR_INVALIDPARAM;
-	if(itempoint < -3 || devpoint < -3) return ISIERR_INVALIDPARAM;
+	if(itempoint < ISIAT_LIMIT || devpoint < ISIAT_LIMIT) return ISIERR_INVALIDPARAM;
+	if(itempoint == ISIAT_SESSION || devpoint == ISIAT_SESSION) return ISIERR_INVALIDPARAM;
 	if(item->id.objtype < 0x2f00) return ISIERR_INVALIDPARAM; /* can't process weird things */
 	if(isi_is_memory(dev)) { /* handle attaching memory */
 		if(item->c->QueryAttach) {
@@ -230,13 +236,16 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 		if(isi_is_bus(item)) isi_update_busmem(item, item->mem);
 		return 0;
 	}
+	int skipq = 0;
 	if(dev->id.objtype < 0x2f00) return ISIERR_NOCOMPAT; /* can't attach weird things to other things */
-	if(item->c->QueryAttach) {
+	if(skipq) {
+	} else if(item->c->QueryAttach) {
 		if((e = item->c->QueryAttach(item, itempoint, dev, devpoint))) {
 			return e;
 		}
 	} else if(!isi_is_bus(item)) return ISIERR_NOCOMPAT; /* can't attach random things to devices */
-	if(dev->c->QueryAttach) { /* test the other device too */
+	if(skipq) {
+	} else if(dev->c->QueryAttach) { /* test the other device too */
 		if((e = dev->c->QueryAttach(dev, devpoint, item, itempoint))) {
 			return e;
 		}
@@ -619,22 +628,32 @@ static int isi_appendindex_dev(struct isiInfo *item, struct isiInfo *d, int32_t 
 	return 0;
 }
 
-int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev)
+int isi_getindex_devi(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev, int32_t *downidx)
 {
 	if(!dev) return -1;
 	if(index >= dev->busdev.count || index >= dev->busdev.limit) return -1;
 	if(!dev->busdev.table) return -1;
 	struct isiInfo *o;
+	int32_t ix;
 	if(index == ISIAT_UP) o = dev->updev.t;
 	else if(index == ISIAT_APPEND) {
 		if(dev->busdev.count < 1) return -1;
 		o = dev->busdev.table[dev->busdev.count - 1].t;
+		ix = dev->busdev.table[dev->busdev.count - 1].i;
 	} else if(index < 0) {
 		return -1;
-	} else o = dev->busdev.table[index].t;
+	} else {
+		o = dev->busdev.table[index].t;
+		ix = dev->busdev.table[index].i;
+	}
 	if(!o) return -1;
 	if(downdev) *downdev = o;
+	if(downidx) *downidx = ix;
 	return 0;
+}
+int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev)
+{
+	return isi_getindex_devi(dev, index, downdev, 0);
 }
 
 static int isi_setindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo *downdev, int32_t downindex)

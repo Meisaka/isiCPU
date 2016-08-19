@@ -1,4 +1,10 @@
 
+0.23
+------
+
+ - added object subscribe and session as a message point
+ - fix a possible issue with messaging being from the wrong source
+
 0.22.1
 ------
 
