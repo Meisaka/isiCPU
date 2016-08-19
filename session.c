@@ -505,8 +505,11 @@ readagain:
 		break;
 	case ISIM_ATTACH:
 		if(l < 8) break;
-		pr[0] = ISIMSG(R_ATTACH, 0, 8);
+		pr[0] = ISIMSG(R_ATTACH, 0, 20);
 		pr[1] = pm[1];
+		pr[3] = pm[2];
+		pr[4] = (uint32_t)ISIAT_APPEND;
+		pr[5] = (uint32_t)ISIAT_UP;
 		{
 			struct objtype *a;
 			struct objtype *b;
@@ -515,7 +518,7 @@ readagain:
 			} else if(a->objtype < 0x2f00){
 				pr[2] = (uint32_t)ISIERR_INVALIDPARAM;
 			} else {
-				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, ISIAT_APPEND, (struct isiInfo*)b, ISIAT_UP);
+				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, ISIAT_APPEND, (struct isiInfo*)b, ISIAT_UP, (int32_t*)(pr+4), (int32_t*)(pr+5));
 			}
 		}
 		session_write_msg(ses);
@@ -576,15 +579,18 @@ readagain:
 		break;
 	case ISIM_ATTACHAT:
 		if(l < 16) break;
-		pr[0] = ISIMSG(R_ATTACH, 0, 8);
+		pr[0] = ISIMSG(R_ATTACH, 0, 20);
 		pr[1] = pm[1];
+		pr[3] = pm[2];
+		pr[4] = pm[3];
+		pr[5] = pm[4];
 		{
 			struct objtype *a;
 			struct objtype *b;
 			if(isi_find_obj(pm[1], &a) || isi_find_obj(pm[2], &b)) {
 				pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			} else {
-				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, (int32_t)pm[3], (struct isiInfo*)b, (int32_t)pm[4]);
+				pr[2] = (uint32_t)isi_attach((struct isiInfo*)a, (int32_t)pm[3], (struct isiInfo*)b, (int32_t)pm[4], (int32_t*)(pr+4), (int32_t*)(pr+5));
 			}
 		}
 		session_write_msg(ses);

@@ -213,7 +213,7 @@ int isi_deattach(struct isiInfo *item, int32_t itempoint)
 	return 0;
 }
 
-int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint)
+int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint, int32_t *itemactual_out, int32_t *devactual_out)
 {
 	int e = 0;
 	if(!item || !dev) return ISIERR_INVALIDPARAM;
@@ -257,10 +257,12 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 		isi_appendindex_dev(dev, item, &iout, itempoint);
 		iptr = &dev->busdev.table[iout].i;
 		devpoint = iout;
+		if(devactual_out) *devactual_out = iout;
 	} else if(devpoint == ISIAT_UP) {
 		dev->updev.t = item;
 		dev->updev.i = itempoint;
 		iptr = &dev->updev.i;
+		if(devactual_out) *devactual_out = ISIAT_UP;
 		if(item->mem) {
 			dev->mem = item->mem;
 			if(isi_is_bus(dev)) isi_update_busmem(dev, item->mem);
@@ -269,18 +271,26 @@ int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int
 		isi_insertindex_dev(dev, 0, item, itempoint);
 		iptr = &dev->busdev.table[0].i;
 		devpoint = 0;
+		if(devactual_out) *devactual_out = 0;
 	} else {
 		isi_setindex_dev(dev, devpoint, item, itempoint);
+		if(devactual_out) *devactual_out = devpoint;
 	}
 	if(itempoint == ISIAT_APPEND) {
 		isi_appendindex_dev(item, dev, &iout, devpoint);
 		if(iptr) *iptr = iout;
+		if(itemactual_out) *itemactual_out = iout;
 	} else if(itempoint == ISIAT_UP) {
 		item->updev.t = dev;
 		item->updev.i = devpoint;
+		if(itemactual_out) *itemactual_out = ISIAT_UP;
 	} else if(itempoint == ISIAT_INSERTSTART) {
 		isi_insertindex_dev(item, 0, dev, devpoint);
-	} else isi_setindex_dev(item, itempoint, dev, devpoint);
+		if(itemactual_out) *itemactual_out = 0;
+	} else {
+		isi_setindex_dev(item, itempoint, dev, devpoint);
+		if(itemactual_out) *itemactual_out = itempoint;
+	}
 	if(item->c->Attach) item->c->Attach(item, itempoint, dev, devpoint);
 	if(dev->c->Attached) dev->c->Attached(dev, devpoint, item, itempoint);
 	return 0;
@@ -614,7 +624,14 @@ int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downd
 	if(!dev) return -1;
 	if(index >= dev->busdev.count || index >= dev->busdev.limit) return -1;
 	if(!dev->busdev.table) return -1;
-	struct isiInfo *o = dev->busdev.table[index].t;
+	struct isiInfo *o;
+	if(index == ISIAT_UP) o = dev->updev.t;
+	else if(index == ISIAT_APPEND) {
+		if(dev->busdev.count < 1) return -1;
+		o = dev->busdev.table[dev->busdev.count - 1].t;
+	} else if(index < 0) {
+		return -1;
+	} else o = dev->busdev.table[index].t;
 	if(!o) return -1;
 	if(downdev) *downdev = o;
 	return 0;

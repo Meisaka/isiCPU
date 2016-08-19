@@ -183,22 +183,22 @@ int isi_addcpu()
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_TRACE | ISICTL_STEP) : 0;
 	isi_make_object(isi_lookup_name("memory_16x64k"), (struct objtype**)&nmem, 0, 0);
 	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
-	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND);
-	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP);
+	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND, 0, 0);
+	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP, 0, 0);
 	isi_make_object(isi_lookup_name("nya_lem"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("clock"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("speaker"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("kaihic32"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	if(binf) {
 		uint8_t ist[24];
 		ist[0] = 0;
@@ -207,11 +207,11 @@ int isi_addcpu()
 		isi_write_parameter(ist, 24, 2, &id, sizeof(uint64_t));
 		if(loadendian) isi_write_parameter(ist, 24, 3, &id, 0);
 		isi_make_object(isi_lookup_name("rom"), (struct objtype**)&ninfo, ist, 24);
-		isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+		isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	}
 
 	isi_make_object(isi_lookup_name("mack_35fd"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	if(diskf) {
 		uint8_t ist[24];
 		ist[0] = 0;
@@ -220,10 +220,10 @@ int isi_addcpu()
 		isi_fname_id(diskf, &dsk);
 		isi_write_parameter(ist, 24, 1, &dsk, sizeof(uint64_t));
 		isi_make_object(isi_lookup_name("disk"), (struct objtype**)&ndsk, ist, 24);
-		isi_attach(ninfo, 0, ndsk, ISIAT_UP);
+		isi_attach(ninfo, 0, ndsk, ISIAT_UP, 0, 0);
 	}
 	isi_make_object(isi_lookup_name("imva"), (struct objtype**)&ninfo, 0, 0);
-	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP);
+	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	return 0;
 }

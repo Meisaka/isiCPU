@@ -1,4 +1,11 @@
 
+0.22.1
+------
+
+ - changed `isi_attach` to include 2 additional (optional) parameters.
+ - added fields to the "attach" response net message.
+ - fix a possible issue allowing attaching the same point twice.
+
 0.22
 ------
 

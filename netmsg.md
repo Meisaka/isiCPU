@@ -58,7 +58,7 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x314 |     0 | 1300 |   R>C    | last of list heirarchy<br>(same struct as response heirarchy) | sent at/with end of list
 | 0x220 |     8 |   12 | S>C, R>C | object created<br>`uint32 id`<br>`uint32 classid`<br>`int32 err (creating session only)`
 | 0x221 |     4 |    4 | S>C, R>C | object deleted<br>`uint32 id`
-| 0x222 |     8 |    8 |   R>C    | object attach<br>`uint32 id`<br>`int32 err`
+| 0x222 |    20 |   20 | S>C, R>C | object attach<br>`uint32 id_a`<br>`int32 err`<br>`uint32 id_b`<br>`int32 point_a`<br>`int32 point_b`
 | 0x224 |     4 |    8 | S>C, R>C | object heirarchy started or reset<br>`uint32 id`<br>`int32 err (initiating session only)`
 | 0x225 |     4 |    8 | S>C, R>C | object heirarchy stopped<br>`uint32 id`<br>`int32 err (initiating session only)`
 | 0x230 |    16 |   16 | R>C, R>S | transaction object created<br>`uint32 txid`<br>`uint32 id`<br>`uint32 classid`<br>`int32 err`

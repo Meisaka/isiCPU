@@ -208,7 +208,7 @@ int isi_cpu_isbrk(isiram16 ram, uint16_t a);
 void isi_cpu_togglebrk(isiram16 ram, uint16_t a);
 
 /* attach dev to item */
-int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint);
+int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint, int32_t *itemactual_out, int32_t *devactual_out);
 int isi_deattach(struct isiInfo *item, int32_t itempoint);
 int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_t lcfg);
 int isi_create_object(int objtype, struct objtype **out);
