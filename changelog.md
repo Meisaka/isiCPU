@@ -3,6 +3,7 @@
 ------
 
  - added sync functions for server
+ - added DACA - a joystick/input control
 
 0.23
 ------

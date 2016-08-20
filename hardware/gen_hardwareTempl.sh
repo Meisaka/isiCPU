@@ -79,22 +79,22 @@ static int ${NAME}_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec mtime)
+static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime);
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */
-	case 0: return ${NAME}_OnReset(info, src, msg+2, mtime); /* CPU finished reset */
-	case 1: return ${NAME}_Query(info, src, msg+2, mtime); /* HWQ executed */
-	case 2: return ${NAME}_HWI(info, src, msg+2, mtime); /* HWI executed */
+	case ISE_RESET: return ${NAME}_OnReset(info, src, msg+2, mtime); /* CPU finished reset */
+	case ISE_QINT: return ${NAME}_Query(info, src, msg+2, mtime); /* HWQ executed */
+	case ISE_XINT: return ${NAME}_HWI(info, src, msg+2, mtime); /* HWI executed */
 	default: break;
 	}
 	return 1;
 }
 
 static struct isiInfoCalls ${NAME}_Calls = {
-	.Reset = ${NAME}_Reset; /* power on reset */
-	.MsgIn = ${NAME}_MsgIn; /* message from CPU or network */
-	.RunCycles = ${NAME}_Tick; /* scheduled runtime */
+	.Reset = ${NAME}_Reset, /* power on reset */
+	.MsgIn = ${NAME}_MsgIn, /* message from CPU or network */
+	.RunCycles = ${NAME}_Tick, /* scheduled runtime */
 };
 
 static int ${NAME}_Init(struct isiInfo *info)
