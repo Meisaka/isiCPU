@@ -155,6 +155,10 @@ int isi_is_bus(struct isiInfo const *item)
 {
 	return (item->id.objtype >= ISIT_BUSDEV && item->id.objtype < ISIT_ENDBUSDEV);
 }
+int isi_is_infodev(struct isiInfo const *item)
+{
+	return (item->id.objtype > 0x2f00);
+}
 
 int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, struct timespec mtime)
 {

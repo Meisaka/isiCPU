@@ -528,6 +528,44 @@ readagain:
 		session_write_msg(ses);
 	}
 		break;
+	case ISIM_REQNVS:
+		if(l < 4) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			pr[1] = pm[1];
+			pr[2] = 0;
+			pr[0] = ISIMSG(SYNCNVSO, 0, 8);
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			uint32_t offs = 0;
+			size_t rqlen = a->nvsize;
+			if(l >= 8) offs = pm[2];
+			if(l >= 12) rqlen = pm[3];
+			pr[1] = pm[1];
+			if(rqlen + offs > a->nvsize) {
+				rqlen = a->nvsize - offs;
+			}
+			if(!rqlen || offs + rqlen > a->nvsize || !a->nvstate || !a->nvsize) {
+				pr[1] = pm[1];
+				pr[2] = 0;
+				pr[0] = ISIMSG(SYNCNVSO, 0, 8);
+				break; /* empty nvstate found or parameters bad */
+			}
+			/* TODO: try and break this */
+			while(rqlen && offs < a->nvsize && a->nvstate) {
+				pr[2] = offs;
+				uint32_t flen = rqlen;
+				if(flen > a->nvsize - offs) flen = a->nvsize - offs;
+				if(flen > 1300 - 8) flen = 1300 - 8;
+				memcpy(pr+3, ((const uint8_t*)a->nvstate) + offs, flen);
+				rqlen -= flen; offs += flen;
+				pr[0] = ISIMSG(SYNCNVSO, 0, 8 + flen);
+				session_write_msg(ses);
+			}
+		}
+	}
+		break;
 	case ISIM_NEWOBJ:
 		if(l < 4) break;
 		pr[0] = ISIMSG(R_NEWOBJ, 0, 12);
@@ -715,9 +753,123 @@ readagain:
 	}
 		break;
 	case ISIM_SYNCMEM16:
+		if(l < 9) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_memory(a) && a->id.objtype == ISIT_MEM6416) {
+			uint8_t *psm = (uint8_t*)(pm+2);
+			uint8_t *pse = ((uint8_t*)(pm+1)) + l;
+			isiram16 mem = (isiram16)a;
+			size_t ramsize = 0x20000; /* specific to isiram16 */
+			while(psm < pse) {
+				uint32_t addr, mlen;
+				addr = (*(uint16_t*)psm); psm += 2;
+				mlen = (*(uint16_t*)psm); psm += 2;
+				if(addr < ramsize && addr + mlen < ramsize && psm + mlen < pse) {
+					memcpy(((uint8_t*)(mem->ram)) + addr, psm, mlen);
+				}
+				psm += mlen;
+			}
+		}
+	}
+		break;
 	case ISIM_SYNCMEM32:
+		if(l < 11) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_memory(a) && a->id.objtype == ISIT_MEM6416) {
+			uint8_t *psm = (uint8_t*)(pm+2);
+			uint8_t *pse = ((uint8_t*)(pm+1)) + l;
+			isiram16 mem = (isiram16)a;
+			size_t ramsize = 0x20000; /* specific to isiram16 */
+			while(psm < pse) {
+				uint32_t addr, mlen;
+				addr = (*(uint32_t*)psm); psm += 4;
+				mlen = (*(uint16_t*)psm); psm += 2;
+				if(addr < ramsize && addr + mlen < ramsize && psm + mlen < pse) {
+					memcpy(((uint8_t*)(mem->ram)) + addr, psm, mlen);
+				}
+				psm += mlen;
+			}
+		}
+	}
+		break;
 	case ISIM_SYNCRVS:
+		if(l < 5) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			size_t plen = l - 4;
+			if(a->rvproto && plen < a->rvproto->length && a->rvstate) {
+				memcpy(a->rvstate, pm + 2, plen);
+			}
+		}
+	}
+		break;
 	case ISIM_SYNCSVS:
+		if(l < 5) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			size_t plen = l - 4;
+			if(a->svproto && plen < a->svproto->length && a->svstate) {
+				memcpy(a->svstate, pm + 2, plen);
+			}
+		}
+	}
+		break;
+	case ISIM_SYNCNVSO:
+		if(l < 9) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			size_t plen = l - 8;
+			size_t offs = pm[2];
+			if(plen + offs < a->nvsize && a->nvstate) {
+				memcpy(((uint8_t*)a->nvstate) + offs, pm + 3, plen);
+			}
+		}
+	}
+		break;
+	case ISIM_SYNCRVSO:
+		if(l < 9) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			size_t plen = l - 8;
+			size_t offs = pm[2];
+			if(a->rvproto && plen + offs < a->rvproto->length && a->rvstate) {
+				memcpy(((uint8_t*)a->rvstate) + offs, pm + 3, plen);
+			}
+		}
+	}
+		break;
+	case ISIM_SYNCSVSO:
+		if(l < 9) break;
+	{
+		struct isiInfo *a;
+		if(isi_find_obj(pm[1], (struct objtype**)&a)) {
+			break; /* not found */
+		} else if(isi_is_infodev(a)) {
+			size_t plen = l - 8;
+			size_t offs = pm[2];
+			if(a->svproto && plen + offs < a->svproto->length && a->svstate) {
+				memcpy(((uint8_t*)a->svstate) + offs, pm + 3, plen);
+			}
+		}
+	}
 		break;
 	default:
 		isilog(L_DEBUG, "net-session: [%08x]: 0x%03x +%05x\n", ses->id.id, mc, l);

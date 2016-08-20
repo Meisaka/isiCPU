@@ -24,6 +24,8 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
  - (S>C) server to client
  - (R>C) server response to client (solicited)
  - (S>S) server to server
+ - Any - allowed in all modes
+ - R>Any - response to message allowed in all modes.
 
 ##### Messages
 | code  | min length | max length | model | description / psudo format |other note
@@ -35,6 +37,7 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x012 |     0 |    0 |   C>S    | request sync all objects
 | 0x013 |     0 |    0 |   C>S    | request classes
 | 0x014 |     0 |    0 |   C>S    | request heirarchy
+| 0x015 |     4 |   12 | S>S, C>S | request non-volatile state<br>`uint32 id`<br>`uint32 offset (optional)`<br>`uint32 reqlen (optional)` | if offset specified, returns nvstate starting at offset bytes. if reqlen specified, returns upto reqlen bytes of nvstate starting at offset.
 | 0x020 |     4 | 1300 |   C>S    | create object<br>`uint32 classid`<br>*parameter list*
 | 0x021 |     4 |    4 |   C>S    | delete object<br>`uint32 id`
 | 0x022 |     8 |    8 |   C>S    | attach object B to A<br>`uint32 id_A`<br>`uint32 id_B`
@@ -50,6 +53,9 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 | 0x0E1 |     8 | 1300 | S>C, S>S | sync memory a32<br>`uint32 id`<br>`{`<br>`uint32 baseindex`<br>`uint16 blocklen`<br>`uint8 data[blocklen]`<br>`} *`
 | 0x0E2 |     4 | 1300 | S>C, S>S | sync run volitile state <br>`uint32 id`<br> `uint8 data[len - 4]`
 | 0x0E3 |     4 | 1300 | S>C, S>S | sync session volitile state <br>`uint32 id`<br>`uint8 data[len - 4]`
+| 0x0E4 |     8 | 1300 |   Any    | sync non-volitile state <br>`uint32 id`<br>`uint32 byteoffset`<br>`uint8 data[len - 8]`
+| 0x0E5 |     8 | 1300 |   Any    | sync run volitile state <br>`uint32 id`<br>`uint32 byteoffset`<br>`uint8 data[len - 8]`
+| 0x0E6 |     8 | 1300 |   Any    | sync session volitile state <br>`uint32 id`<br>`uint32 byteoffset`<br>`uint8 data[len - 8]`
 | 0x200 |  1300 | 1300 |   R>C    | list accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent with long list or continuation
 | 0x201 |     0 | 1300 |   R>C    | last of list accessable objects <br>`{ uint32 id; uint32 classid; }[len / 8]` | sent at/with end of list
 | 0x213 |  1300 | 1300 |   R>C    | list classes <br>`{ uint32 id; uint32 flags; cstring name; cstring desc; }[*]` | sent with long list or continuation

@@ -212,6 +212,11 @@ uint16_t isi_hw_rdmem(isiram16 ram, uint16_t a);
 void isi_hw_wrmem(isiram16 ram, uint16_t a, uint16_t v);
 int isi_cpu_isbrk(isiram16 ram, uint16_t a);
 void isi_cpu_togglebrk(isiram16 ram, uint16_t a);
+/* boolean functions */
+int isi_is_memory(struct isiInfo const *item);
+int isi_is_cpu(struct isiInfo const *item);
+int isi_is_bus(struct isiInfo const *item);
+int isi_is_infodev(struct isiInfo const *item);
 
 /* attach dev to item */
 int isi_attach(struct isiInfo *item, int32_t itempoint, struct isiInfo *dev, int32_t devpoint, int32_t *itemactual_out, int32_t *devactual_out);

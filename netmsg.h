@@ -8,6 +8,7 @@
 #define ISIM_SYNCALL    (0x012)
 #define ISIM_GETCLASSES (0x013)
 #define ISIM_GETHEIR    (0x014)
+#define ISIM_REQNVS     (0x015)
 
 #define ISIM_NEWOBJ     (0x020)
 #define ISIM_DELOBJ     (0x021)
@@ -26,6 +27,17 @@
 #define ISIM_SYNCMEM32  (0x0E1)
 #define ISIM_SYNCRVS    (0x0E2)
 #define ISIM_SYNCSVS    (0x0E3)
+#define ISIM_SYNCNVSO   (0x0E4)
+#define ISIM_SYNCRVSO   (0x0E5)
+#define ISIM_SYNCSVSO   (0x0E6)
+
+#define ISIM_R_GETOBJ   (0x200)
+#define ISIM_L_GETOBJ   (0x201)
+
+
+#define ISIM_R_GETOBJ   (0x200)
+#define ISIM_L_GETOBJ   (0x201)
+
 
 #define ISIM_R_GETOBJ   (0x200)
 #define ISIM_L_GETOBJ   (0x201)

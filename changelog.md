@@ -1,4 +1,9 @@
 
+0.24
+------
+
+ - added sync functions for server
+
 0.23
 ------
 
