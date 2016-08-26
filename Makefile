@@ -5,9 +5,12 @@ cctest : CC=g++ -g
 cctest : CFLAGS=-O2 -Wall -D_POSIX_C_SOURCE=200809L
 
 SRCFILES=$(shell find . -name '*.c')
+SRCPFILES=$(shell find . -name '*.cpp')
 INCFILES=$(shell find . -name '*.h')
 THEFILES=$(basename $(SRCFILES))
+THEPFILES=$(basename $(SRCPFILES))
 THEOBJ=$(addsuffix .o,$(THEFILES))
+THEPOBJ=$(addsuffix .o,$(THEPFILES))
 
 .PHONY: all clean
 
@@ -18,9 +21,10 @@ clean:
 	@rm -fv isicpu
 	@rm -fv ${THEOBJ}
 
-depends: ${SRCFILES} ${INCFILES} Makefile
+depends: ${SRCFILES} ${SRCPFILES} ${INCFILES} Makefile
 	@rm -fv depends
-	@for i in ${SRCFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i)" >> depends ; done
+	@for i in ${THEFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i.c -MT Makefile -MT $$i.o)" >> depends ; done
+	@for i in ${THEPFILES} ; do echo "depends $$(${CXX} ${CXXFLAGS} -MM $$i.cpp -MT Makefile -MT $$i.o)" >> depends ; done
 
 isicpu: ${THEOBJ} Makefile depends
 	@${CC} ${THEOBJ} -Wl,-as-needed -lrt -o isicpu
@@ -29,5 +33,9 @@ isicpu: ${THEOBJ} Makefile depends
 include depends
 
 %.o: %.c Makefile
-	@echo "$< > CC > $@ ($*)"
+	@echo "CC  : $< >> $@ ($*)"
 	@${CC} ${CFLAGS} -c $< -o $@
+%.o: %.cpp Makefile
+	@echo "C++ : $< >> $@ ($*)"
+	@${CXX} ${CXXFLAGS} -c $< -o $@
+
