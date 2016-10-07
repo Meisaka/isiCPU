@@ -707,16 +707,15 @@ int isi_push_dev(struct isiDevTable *t, struct isiInfo *d)
 	return 0;
 }
 
-int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target)
+int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target, size_t *index)
 {
 	size_t i;
 	if(!id) return -1;
 	for(i = 0; i < t->count; i++) {
 		struct isiInfo *obj = t->table[i];
 		if(obj && obj->id.id == id) {
-			if(target) {
-				*target = obj;
-			}
+			if(target) *target = obj;
+			if(index) *index = i;
 			return 0;
 		}
 	}

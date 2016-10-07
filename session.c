@@ -627,7 +627,7 @@ readagain:
 		pr[1] = pm[1];
 		pr[2] = (uint32_t)ISIERR_FAIL;
 		struct isiInfo *a;
-		if(isi_find_dev(&allcpu, pm[1], &a)) {
+		if(isi_find_dev(&allcpu, pm[1], &a, 0)) {
 			pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			if(isi_find_obj(pm[1], (struct objtype**)&a)) {
 				pr[2] = (uint32_t)ISIERR_NOTFOUND;
@@ -657,7 +657,15 @@ readagain:
 		pr[0] = ISIMSG(R_STOP, 0, 8);
 		pr[1] = pm[1];
 		pr[2] = (uint32_t)ISIERR_FAIL;
+	{
+		struct isiInfo *a;
+		size_t idx = 0;
+		if(!isi_find_dev(&allcpu, pm[1], &a, &idx)) {
+		} else {
+			pr[2] = (uint32_t)ISIERR_NOTFOUND;
+		}
 		session_write_msg(ses); /* TODO multisession */
+	}
 		break;
 	case ISIM_ATTACHAT:
 		if(l < 16) break;

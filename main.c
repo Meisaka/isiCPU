@@ -43,9 +43,6 @@ enum {
 	CPUSMAX = 800,
 	CPUSMIN = 20
 };
-static uint32_t numberofcpus = 1;
-static uint32_t softcpumax = 1;
-static uint32_t softcpumin = 1;
 
 extern struct isiDevTable alldev;
 extern struct isiDevTable allcpu;
@@ -571,6 +568,7 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
 		showdiag_dcpu(allcpu.table[cux], 1);
 	}
+	uint32_t numberofcpus = 1;
 	while(!haltnow) {
 		struct isiCPUInfo * ccpu;
 		struct isiInfo * ccpi;
@@ -626,21 +624,6 @@ int main(int argc, char**argv, char**envp)
 			if(allcpu.count) showdiag_up(4);
 			}
 			fetchtime(&LTUTime);
-			if(gccq >= sts.cpusched / numberofcpus ) {
-				if(numberofcpus > softcpumin) {
-					numberofcpus--;
-					if(rqrun) fprintf(stderr, "TODO: Offline a CPU\n");
-					premlimit--;
-					paddlimit = 0;
-				}
-			} else {
-				if(numberofcpus < softcpumax) {
-					//fetchtime(&allcpus[numberofcpus].nrun);
-					//isi_addtime(&allcpus[numberofcpus].nrun, quantum);
-					numberofcpus++;
-					if(rqrun) fprintf(stderr, "TODO: Online a CPU\n");
-				}
-			}
 			lucycles = 0;
 			lucpus = 0;
 			gccq = 0;
@@ -715,6 +698,8 @@ sessionerror:
 			if(!(cux < allcpu.count)) {
 				cux = 0;
 			}
+			numberofcpus = allcpu.count;
+			if(numberofcpus < 1) numberofcpus = 1;
 		} else {
 			numberofcpus = 1;
 			cux = 0;

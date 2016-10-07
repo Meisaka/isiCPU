@@ -228,7 +228,7 @@ int isi_find_obj(uint32_t id, struct objtype **target);
 int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
-int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target);
+int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target, size_t *index);
 int isi_getindex_devi(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev, int32_t *downidx);
 int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev);
 int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *, int, struct timespec mtime);
