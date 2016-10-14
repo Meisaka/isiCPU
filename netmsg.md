@@ -61,13 +61,14 @@ length = (head      ) & 0x1fff    ;// ( 13 bits )
 
 When used over a datagram protocol (UDP or IP) the packet format is:
 
- - 32 bit head (message code, flags, length)
- - 32 bit session nonce - unique non-zero value identifying the associated session
- - 32 bit control sequence - The *sender* packet number, incremented by 1 for each packet sent
- - any extension values indicated by flags.
- - payload
- - padding (zeros) to align to 32 bits (only if end of message is not aligned)
- - An end of packet word - aligned 32 bit integer: 0xFF8859EA
+ 1. 32 bit head (message code, flags, length)
+ 2. 32 bit session nonce - unique non-zero value identifying the associated session
+ 3. 32 bit control sequence - The *sender* packet number, incremented by 1 for each packet sent
+ 4. any extension values indicated by flags.
+ 5. payload
+ 6. padding (zeros) to align to 32 bits (only if end of message is not aligned)
+ 7. An end of packet word - aligned 32 bit integer: 0xFF8859EA
+
 
  - length is message payload length (in bytes) after header and any extensions.
  - datagram minimum is a 12 byte header + 0 length message + no padding + 4 byte tail
@@ -190,15 +191,14 @@ non-zero unique value identifying the session.
    **CAN NOT** be later extended to TCP, but the reverse is true: a TCP session **MAY**
    be freely extended to include UDP as well.
 
-##### Transacted messages
+### Transacted messages
 
- - Have an extra "txid" value.
- - the contents of *txid* are returned in the response message.
- - may arrive out of order and between other "serialized" messages.
- - may have longer internal processing time.
+ - Have an extra `txid` value. The contents of `txid` are returned in the matching response message.
+ - **MAY** arrive out of order and between other *serialized* messages.
+ - **MAY** have longer internal processing time.
 
-##### Parameter Lists
- - A "Parameter" list is a list of tagged, variable sized arguments.
+### Parameter Lists
+ - A *Parameter list* is a list of tagged, variable sized arguments.
  - An entry consists of:
    1. A byte tag, object specific, zero indicates end of list, thus all options usually start at one.
    2. Followed by a byte length, this can be zero if used as a flag parameter.
@@ -219,10 +219,10 @@ non-zero unique value identifying the session.
 |   dcpu   |   1 | uint32 | cycle rate in Hz.
 |   dcpu   |   2 |  none  | (flag) put DCPU in debug mode if specified.
 
-##### Attach Point Enums
+### Attach Point Enums
  - values > 0 are normal bus attach points
  - values < 0 are special attach points
- - Attaching a "memory" type device currently ignores destination attach point, the destination should be set to 0 (zero) and source to -1 to maintain possible future compatibility.
+ - Attaching a *memory* type device currently ignores destination attach point, the destination should be set to 0 (zero) and source to -1 to maintain possible future compatibility.
 
 |     Point    |   Value
 |:------------:|------------
