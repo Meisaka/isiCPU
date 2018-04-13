@@ -6,16 +6,17 @@ A network server for emulating CPUs (DCPU 1.7 specifically), and providing API a
 Actual Features
 ------
 
- - [DCPU 1.7] [1] Emulation, good accuracy and error handling
+ - [DCPU 1.7] Emulation, good accuracy and error handling.
  - Keyboard, LEM, Clock, Mackapar floppy, ROM, IMVA are emulated.
- - CPUs and hardware store components of state in isiCPU
+ - CPUs and hardware store components of state in isiCPU.
  - Fairly abstract and portable hardware and CPU interface for emulation.
  - Network access to multiple DCPU terminals (Keyboard and Display).
  - Multiple DCPUs can be run at once, and can be added at runtime.
- - Configurable TCP port
- - DCPU disassembly and debugger
- - Endian swap option for bin files
- - bin files load to a "rom" device
+ - Configurable TCP port.
+ - DCPU disassembly and debugger.
+ - Endian swap option for bin files.
+ - bin files load to a "rom" device.
+ - Data persistence via external Redis database.
  - load estimation and support for multiple CPUs (mostly works)
  - single-threaded processes, multiple processes must be run on a server to use more cores.
 
@@ -24,27 +25,27 @@ Design Goals and Planned Features
 
  - (Better) Support for multiple types of CPU emulation
  - Support more hardware emulations. (It's close!)
- - Add various [new hardware devices] [2]
+ - Add various [new hardware devices][Hardware]
  - Provide a network interface to the CPU and associated hardware. (WIP)
  - Both hardware and CPUs should each have their own unique ID number. (WIP)
  - CPUs and hardware must be able to be added/removed without affecting others. (WIP)
  - Runtime add/remove/configure/debug of hardware and CPUs from network API. (WIP
  - Emulation layer will provide an API that allows add-on shared libraries.
  - Add-on libraries will be able to be loaded during emulation.
- - Add CPU [TR3200] [3]
- - Add CPU [DCPU-16N] [4]
- - Add CPU [Mira2204] [5]
+ - Add CPU [TR3200]
+ - Add CPU [DCPU-16N]
+ - Add CPU [Mira2204]
  - support clustered networking.
  - Multiple processes on the same server will use Unix Domain sockets (or equivilent).
  - isiCPU will support both IPv4 and IPv6 using TCP sockets.
  - each instance of isiCPU in a cluster will allow migrating emulation state(s) to another server, both for redundancy and load sharing.
  - instances will be able to be added and removed dyamically from a cluster.
 
-  [1]: https://raw.githubusercontent.com/gatesphere/demi-16/master/docs/dcpu-specs/dcpu-1-7.txt "DcPU Specs"
-  [2]: https://github.com/techcompliant/TC-Specs "Tech Compliant Specs"
-  [3]: https://github.com/trillek-team/trillek-computer/blob/master/cpu/TR3200.md "TR3200 CPU Specs"
-  [4]: https://gist.github.com/Meisaka/8800367 "DCPU-16N Specification"
-  [5]: https://github.com/Meisaka/MiraISA/blob/mira2204/mira2204.txt "Mira2204 Instruction Set Architecture"
+  [DCPU 1.7]: https://raw.githubusercontent.com/gatesphere/demi-16/master/docs/dcpu-specs/dcpu-1-7.txt "DCPU Specs"
+  [Hardware]: https://github.com/techcompliant/TC-Specs "Tech Compliant Specs"
+  [TR3200]: https://github.com/trillek-team/trillek-computer/blob/master/cpu/TR3200.md "TR3200 CPU Specs"
+  [DCPU-16N]: https://gist.github.com/Meisaka/8800367 "DCPU-16N Specification"
+  [Mira2204]: https://github.com/Meisaka/MiraISA/blob/mira2204/mira2204.txt "Mira2204 Instruction Set Architecture"
 
 Programming Language
 ------
