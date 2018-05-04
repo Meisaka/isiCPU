@@ -1,5 +1,5 @@
 
-#include "cputypes.h"
+#include "isitypes.h"
 
 struct isiDevTable alldev;
 struct isiDevTable allcpu;

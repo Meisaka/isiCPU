@@ -3,7 +3,7 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <stdint.h>
-#include "cputypes.h"
+#include "isitypes.h"
 
 #define MF_ECIV 0xeca7410c
 #define MF_NYAE 0x1c6c8b36

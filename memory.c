@@ -1,5 +1,5 @@
 
-#include "cputypes.h"
+#include "isitypes.h"
 
 static struct isiConstruct Mem6416_Con = {
 	ISIT_MEM6416, "memory_16x64k", "64k x 16 Memory",

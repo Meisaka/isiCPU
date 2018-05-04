@@ -1,5 +1,5 @@
-#ifndef _ISI_CPUTYPES_H_
-#define _ISI_CPUTYPES_H_
+#ifndef _ISI_ISITYPES_H_
+#define _ISI_ISITYPES_H_
 
 #include <stdint.h>
 #include <string.h>

@@ -8,7 +8,7 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
-#include "cputypes.h"
+#include "isitypes.h"
 #include "netmsg.h"
 #include <stdio.h>
 

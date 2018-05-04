@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
-#include "cputypes.h"
+#include "isitypes.h"
 #include "netmsg.h"
 
 #define NSY_OBJ 1

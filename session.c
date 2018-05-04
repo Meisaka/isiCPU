@@ -6,7 +6,7 @@
 #include <poll.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
-#include "cputypes.h"
+#include "isitypes.h"
 #include "netmsg.h"
 
 extern struct isiDevTable alldev;

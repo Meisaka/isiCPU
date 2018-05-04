@@ -4,7 +4,7 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <stdint.h>
-#include "../cputypes.h"
+#include "../isitypes.h"
 
 #define PDI_IBUSY 0x1000
 #define PDI_OVFLAG 0x2000

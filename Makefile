@@ -23,8 +23,8 @@ clean:
 
 depends: ${SRCFILES} ${SRCPFILES} ${INCFILES} Makefile
 	@rm -fv depends
-	@for i in ${THEFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i.c -MT Makefile -MT $$i.o)" >> depends ; done
-	@for i in ${THEPFILES} ; do echo "depends $$(${CXX} ${CXXFLAGS} -MM $$i.cpp -MT Makefile -MT $$i.o)" >> depends ; done
+	@for i in ${THEFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i.c -MT $$i.o) Makefile" >> depends ; done
+	@for i in ${THEPFILES} ; do echo "depends $$(${CXX} ${CXXFLAGS} -MM $$i.cpp -MT $$i.o) Makefile" >> depends ; done
 
 isicpu: ${THEOBJ} Makefile depends
 	@${CC} ${THEOBJ} -Wl,-as-needed -lrt -o isicpu

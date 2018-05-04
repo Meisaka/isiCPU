@@ -15,13 +15,14 @@
 #include <netinet/tcp.h>
 #include <signal.h>
 #include "dcpuhw.h"
-#include "cputypes.h"
+#include "isitypes.h"
 #include "netmsg.h"
 #define CLOCK_MONOTONIC_RAW             4   /* since 2.6.28 */
 #define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
 
 static struct timespec LTUTime;
+static uint32_t numberofcpus = 1;
 static int haltnow = 0;
 static int loadendian = 0;
 static int flagdbg = 0;
@@ -33,6 +34,7 @@ static char * redisaddr = 0;
 static char * diskf = 0;
 static int listenportnumber = 58704;
 static int verblevel = L_INFO;
+static uintptr_t gccq = 0;
 
 int fdlog = STDERR_FILENO;
 int usefs = 0;
@@ -326,7 +328,7 @@ int handle_stdin(struct isiSession *ses, struct timespec mtime)
 			}
 			isi_cpu_togglebrk((isiram16)allcpu.table[0]->mem, t);
 			k = isi_cpu_isbrk((isiram16)allcpu.table[0]->mem, t);
-			fprintf(stderr, "debug: Break point %sed at %04x\n", k?"enabl":"disabl",t);
+			fprintf(stderr, "debug: Break point %sabled at %04x\n", k?"en":"dis",t);
 		}
 		break;
 	case 'x':
@@ -335,7 +337,7 @@ int handle_stdin(struct isiSession *ses, struct timespec mtime)
 	case 't':
 		if(!cpu) break;
 		cpu->ctl ^= ISICTL_TRACEC;
-		fprintf(stderr, "debug: trace on continue %sed\n", (cpu->ctl & ISICTL_TRACEC)?"enabl":"disabl");
+		fprintf(stderr, "debug: trace on continue %sabled\n", (cpu->ctl & ISICTL_TRACEC)?"en":"dis");
 		break;
 	case 'n':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
@@ -380,6 +382,7 @@ struct stats {
 	int cpusched;
 };
 
+struct stats allstats = {0, };
 static int parse_args(int argc, char**argv)
 {
 	int i, k;
@@ -500,13 +503,44 @@ void enter_service()
 	close(STDERR_FILENO);
 }
 
+static size_t isi_run_cpu(uint32_t cpunumber)
+{
+	struct isiCPUInfo * ccpu;
+	struct isiInfo * ccpi;
+	ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cpunumber]);
+	struct timespec CRun;
+	int ccq = 0;
+	int tcc = numberofcpus * 2;
+	size_t acccycles = 0;
+	if(tcc < 20) tcc = 20;
+	fetchtime(&CRun);
+	while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
+		allstats.quanta++;
+		ccpi->c->RunCycles(ccpi, CRun);
+		//TODO some hardware may need to work at the same time
+		acccycles += ccpu->cycl;
+		if(rqrun && (ccpu->ctl & ISICTL_TRACE) && (ccpu->cycl)) {
+			showdiag_dcpu(ccpi, 1);
+		}
+		ccpu->cycl = 0;
+		fetchtime(&CRun);
+		ccq++;
+	}
+	if(ccq >= tcc) gccq++;
+	allstats.cpusched++;
+	fetchtime(&CRun);
+
+	if(ccpi->updev.t && ccpi->updev.t->c->RunCycles) {
+		ccpi->updev.t->c->RunCycles(ccpi->updev.t, CRun);
+	}
+	return acccycles;
+}
+
 int main(int argc, char**argv, char**envp)
 {
 	uint32_t cux;
-	uintptr_t gccq = 0;
 	uintptr_t lucycles = 0;
 	uintptr_t lucpus = 0;
-	struct stats sts = {0, };
 	int paddlimit = 0;
 	int premlimit = 0;
 
@@ -568,41 +602,16 @@ int main(int argc, char**argv, char**envp)
 	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
 		showdiag_dcpu(allcpu.table[cux], 1);
 	}
-	uint32_t numberofcpus = 1;
 	while(!haltnow) {
-		struct isiCPUInfo * ccpu;
-		struct isiInfo * ccpi;
 		struct timespec CRun;
 
-		ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cux]);
 		fetchtime(&CRun);
 
 		if(!allcpu.count) {
 			struct timespec stime = {0, 10000};
 			nanosleep(&stime, NULL);
 		} else {
-			int ccq = 0;
-			int tcc = numberofcpus * 2;
-			if(tcc < 20) tcc = 20;
-			while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
-				sts.quanta++;
-				ccpi->c->RunCycles(ccpi, CRun);
-				//TODO some hardware may need to work at the same time
-				lucycles += ccpu->cycl;
-				if(rqrun && (ccpu->ctl & ISICTL_TRACE) && (ccpu->cycl)) {
-					showdiag_dcpu(ccpi, 1);
-				}
-				ccpu->cycl = 0;
-				fetchtime(&CRun);
-				ccq++;
-			}
-			if(ccq >= tcc) gccq++;
-			sts.cpusched++;
-			fetchtime(&CRun);
-
-			if(ccpi->updev.t && ccpi->updev.t->c->RunCycles) {
-				ccpi->updev.t->c->RunCycles(ccpi->updev.t, CRun);
-			}
+			lucycles += isi_run_cpu(cux);
 		}
 		fetchtime(&CRun);
 		isi_run_sync(CRun);
@@ -619,7 +628,7 @@ int main(int argc, char**argv, char**envp)
 			clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
 			fprintf(stderr, "DC: %.4f sec, %d at % 9.3f kHz   (% 8ld) [Q:% 8d, S:% 8d, SC:% 8d]\r",
 					clkdelta, numberofcpus, clkrate, gccq,
-					sts.quanta, sts.cpusched, sts.cpusched / numberofcpus
+					allstats.quanta, allstats.cpusched, allstats.cpusched / numberofcpus
 					);
 			if(allcpu.count) showdiag_up(4);
 			}
@@ -627,7 +636,7 @@ int main(int argc, char**argv, char**envp)
 			lucycles = 0;
 			lucpus = 0;
 			gccq = 0;
-			memset(&sts, 0, sizeof(struct stats));
+			memset(&allstats, 0, sizeof(struct stats));
 			if(premlimit < 20) premlimit+=10;
 			if(paddlimit < 20) paddlimit+=2;
 			for(k = 0; k < allses.count; k++) {
@@ -666,22 +675,20 @@ int main(int argc, char**argv, char**envp)
 		}
 		if(i > 0) {
 			for(k = 0; k < allses.pcount; k++) {
-				if(!allses.ptable[k].revents) continue;
+				int ev = allses.ptable[k].revents;
+				if(!ev) continue;
 				struct isiSession *ses = allses.table[k];
 				const char *etxt = 0;
 				/* Here be dragons */
-				switch(allses.ptable[k].revents) {
-				case POLLERR: etxt = "poll: FD error\n"; goto sessionerror;
-				case POLLHUP: etxt = "poll: FD hangup\n"; goto sessionerror;
-				case POLLNVAL: etxt = "poll: FD invalid\n"; goto sessionerror;
-				default:
-					if(allses.ptable[k].revents & POLLIN) {
-						if(ses->sfd == allses.ptable[k].fd) {
-							if(ses->Recv(ses, CRun))
-								goto sessionerror;
-						} else {
-							isilog(L_ERR, "netses: session ID error\n");
-						}
+				if(ev & POLLERR) { etxt = "poll: FD error\n"; goto sessionerror; }
+				if(ev & POLLHUP) { etxt = "poll: FD hangup\n"; goto sessionerror; }
+				if(ev & POLLNVAL) { etxt = "poll: FD invalid\n"; goto sessionerror; }
+				if(ev & POLLIN) {
+					if(ses->sfd == allses.ptable[k].fd) {
+						if(ses->Recv(ses, CRun))
+							goto sessionerror;
+					} else {
+						isilog(L_ERR, "netses: session ID error\n");
 					}
 				}
 				continue;

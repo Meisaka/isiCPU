@@ -1,5 +1,5 @@
 
-#include "cputypes.h"
+#include "isitypes.h"
 extern struct isiSessionTable allses;
 int isi_premake_object(int objtype, struct isiConstruct **outcon, struct objtype **out);
 

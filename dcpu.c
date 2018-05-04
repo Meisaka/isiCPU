@@ -1,7 +1,7 @@
 
 #include "dcpuhw.h"
-#include "opcode.h"
-#include "cputypes.h"
+#include "dcpuop.h"
+#include "isitypes.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -66,10 +66,10 @@ static const char * DCPUP[] = {
 };
 
 static const char * DIAG_L4 =
-	" A    B    C    X    Y    Z   \n"
-	"%04x %04x %04x %04x %04x %04x \n"
-	" I    J    PC   SP   EX   IA   CL\n"
-	"%04x %04x %04x %04x %04x %04x % 2d \n";
+	" A    B    C    X    Y    Z         \n"
+	"%04x %04x %04x %04x %04x %04x       \n"
+	" I    J    PC   SP   EX   IA   CL   \n"
+	"%04x %04x %04x %04x %04x %04x % 2d  \n";
 static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
 	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
