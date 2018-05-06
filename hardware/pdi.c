@@ -1,6 +1,6 @@
 #include "pdi.h"
 
-int pdi_addrxword(struct PDI_port *p, struct timespec *pt, uint16_t word, struct timespec const *now)
+int pdi_addrxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now)
 {
 	int dc = PDI_GETC(p->stat);
 	if(dc < PDI_BUFLIMIT) {
@@ -13,7 +13,7 @@ int pdi_addrxword(struct PDI_port *p, struct timespec *pt, uint16_t word, struct
 	return 0;
 }
 
-int pdi_addtxword(struct PDI_port *p, struct timespec *pt, uint16_t word, struct timespec const *now)
+int pdi_addtxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now)
 {
 	int dc = PDI_GETC(p->stat);
 	if(dc < PDI_BUFLIMIT) {
@@ -60,7 +60,7 @@ int pdi_hasfree(struct PDI_port *p)
 {
 	return PDI_GETC(p->stat) < PDI_BUFLIMIT;
 }
-int pdi_process(struct PDI_port *p, struct timespec *pt, struct timespec const *now)
+int pdi_process(struct PDI_port *p, isi_time_t *pt, isi_time_t const *now)
 {
 	int dc = PDI_GETC(p->stat);
 	int rc = PDI_GETR(p->stat);

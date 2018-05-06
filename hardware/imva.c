@@ -80,7 +80,7 @@ int imva_interrupt(struct isiInfo *info, uint16_t *msg)
 	return 0;
 }
 
-static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int imva_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case 0: return imva_reset(info);

@@ -16,10 +16,10 @@ extern struct isiSessionTable allses;
 extern struct isiObjTable allobj;
 int isi_create_object(int objtype, struct objtype **out);
 
-static int server_handle_new(struct isiSession *ses, struct timespec mtime);
-static int session_handle_rd(struct isiSession *ses, struct timespec mtime);
+static int server_handle_new(struct isiSession *ses, isi_time_t mtime);
+static int session_handle_rd(struct isiSession *ses, isi_time_t mtime);
 static int session_handle_async(struct isiSession *ses, struct sescommandset *cmd, int result);
-static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime);
+static int session_handle_keepalive(struct isiSession *ses, isi_time_t mtime);
 
 struct cemei_svstate {
 	uint32_t sessionid;
@@ -30,7 +30,7 @@ ISIREFLECT(struct cemei_svstate,
 	ISIR(cemei_svstate, uint32_t, sessionid)
 	ISIR(cemei_svstate, uint32_t, index)
 )
-static int cemei_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int cemei_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	struct cemei_svstate *dev = (struct cemei_svstate*)info->svstate;
 	struct isiSession *ses = dev->ses;
@@ -219,7 +219,7 @@ int isi_delete_ses(struct isiSession *s)
 	return 0;
 }
 
-static int server_handle_new(struct isiSession *hses, struct timespec mtime)
+static int server_handle_new(struct isiSession *hses, isi_time_t mtime)
 {
 	int fdn, i;
 	socklen_t rin;
@@ -351,7 +351,7 @@ int session_write_buf(struct isiSession *ses, void *buf, int len)
 	return send(ses->sfd, (char*)buf, len, 0);
 }
 
-static int session_handle_keepalive(struct isiSession *ses, struct timespec mtime)
+static int session_handle_keepalive(struct isiSession *ses, isi_time_t mtime)
 {
 	*((uint32_t*)ses->out) = ISIMSG(PING, 0, 0);
 	errno = 0;
@@ -384,7 +384,7 @@ static int session_handle_async(struct isiSession *ses, struct sescommandset *cm
 	return 0;
 }
 
-static int session_handle_rd(struct isiSession *ses, struct timespec mtime)
+static int session_handle_rd(struct isiSession *ses, isi_time_t mtime)
 {
 	int i;
 	uint32_t l;
@@ -478,7 +478,7 @@ readagain:
 		uint8_t *bm = ses->out + 4;
 		isilog(L_DEBUG, "net-msg: [%08x]: list classes\n", ses->id.id);
 		for(i = 0; i < allcon.count; i++) {
-			struct isiConstruct *con = allcon.table[i];
+			struct isiConstruct const *con = allcon.table[i];
 			size_t mln = strlen(con->name) + 1;
 			size_t mld = strlen(con->desc) + 1;
 			size_t mlt = 8 + mln + mld;
@@ -628,7 +628,6 @@ readagain:
 		pr[2] = (uint32_t)ISIERR_FAIL;
 		struct isiInfo *a;
 		if(isi_find_dev(&allcpu, pm[1], &a, 0)) {
-			pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			if(isi_find_obj(pm[1], (struct objtype**)&a)) {
 				pr[2] = (uint32_t)ISIERR_NOTFOUND;
 			} else if(a->id.objtype >= 0x3000 && a->id.objtype < 0x3fff) {
@@ -638,7 +637,7 @@ readagain:
 				}
 				if(!pr[2]) {
 					isi_push_dev(&allcpu, a);
-					fetchtime(&a->nrun);
+					isi_fetch_time(&a->nrun);
 					isilog(L_INFO, "net-session: enabling CPU\n");
 				}
 			} else {
@@ -659,8 +658,11 @@ readagain:
 		pr[2] = (uint32_t)ISIERR_FAIL;
 	{
 		struct isiInfo *a;
-		size_t idx = 0;
-		if(!isi_find_dev(&allcpu, pm[1], &a, &idx)) {
+		size_t index = 0;
+		if(!isi_find_dev(&allcpu, pm[1], &a, &index)) {
+			if(a->c->Reset) a->c->Reset(a);
+			isilog(L_INFO, "net-session: stopping CPU\n");
+			pr[2] = (uint32_t)isi_pop_dev(&allcpu, a);
 		} else {
 			pr[2] = (uint32_t)ISIERR_NOTFOUND;
 		}

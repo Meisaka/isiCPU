@@ -34,8 +34,9 @@ struct sescommandset {
 	void * xdata; /* alloc/free */
 	void * cptr; /* raw pointer, not freed */
 };
+typedef uint64_t isi_time_t;
 
-typedef int (*isi_ses_handle)(struct isiSession *ses, struct timespec mtime);
+typedef int (*isi_ses_handle)(struct isiSession *ses, isi_time_t mtime);
 typedef int (*isi_ses_cmdend)(struct isiSession *ses, struct sescommandset *cmd, int result);
 
 struct isiSession {
@@ -47,7 +48,7 @@ struct isiSession {
 	uint8_t *in;
 	uint8_t *out;
 	void * istate;
-	struct timespec rqtimeout;
+	isi_time_t rqtimeout;
 	struct sescommandset *cmdq;
 	struct isiInfo *ccmei;
 	uint32_t cmdqstart;
@@ -104,7 +105,7 @@ struct isiNetSync {
 	int target_index;
 	int memobj_index;
 	size_t rate;
-	struct timespec nrun;
+	isi_time_t nrun;
 	uint32_t extents;
 	uint32_t base[4];
 	uint32_t len[4];
@@ -113,10 +114,10 @@ struct isiNetSync {
 typedef int (*isi_init_call)(struct isiInfo *);
 typedef int (*isi_size_call)(int, size_t *);
 typedef int (*isi_new_call)(struct isiInfo *, const uint8_t *, size_t);
-typedef int (*isi_run_call)(struct isiInfo *, struct timespec crun);
+typedef int (*isi_run_call)(struct isiInfo *, isi_time_t crun);
 typedef int (*isi_control_call)(struct isiInfo *);
 typedef int (*isi_attach_call)(struct isiInfo *to, int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime);
+typedef int (*isi_message_call)(struct isiInfo *dest, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime);
 
 struct isiConstruct {
 	uint32_t objtype;
@@ -126,13 +127,13 @@ struct isiConstruct {
 	isi_init_call Init;
 	isi_size_call QuerySize;
 	isi_new_call New;
-	struct isiReflection *rvproto;
-	struct isiReflection *svproto;
-	void * meta;
+	struct isiReflection const *rvproto;
+	struct isiReflection const *svproto;
+	void const * meta;
 };
 
 struct isiConTable {
-	struct isiConstruct ** table;
+	struct isiConstruct const ** table;
 	uint32_t count;
 	uint32_t limit;
 };
@@ -156,12 +157,12 @@ struct isiInfo {
 	void * rvstate;
 	void * svstate;
 	void * nvstate;
-	struct isiReflection *rvproto;
-	struct isiReflection *svproto;
+	struct isiReflection const *rvproto;
+	struct isiReflection const *svproto;
 	size_t nvsize;
 	void * mem;
 	const struct isiConstruct * meta;
-	struct timespec nrun;
+	isi_time_t nrun;
 	struct isiDevTree busdev;
 };
 
@@ -228,10 +229,11 @@ int isi_find_obj(uint32_t id, struct objtype **target);
 int isi_find_uuid(uint32_t cid, uint64_t uuid, struct objtype **target);
 int isi_createdev(struct isiInfo **ndev);
 int isi_push_dev(struct isiDevTable *t, struct isiInfo *d);
+int isi_pop_dev(struct isiDevTable *t, struct isiInfo *d);
 int isi_find_dev(struct isiDevTable *t, uint32_t id, struct isiInfo **target, size_t *index);
 int isi_getindex_devi(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev, int32_t *downidx);
 int isi_getindex_dev(struct isiInfo *dev, uint32_t index, struct isiInfo **downdev);
-int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *, int, struct timespec mtime);
+int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *, int, isi_time_t mtime);
 uint32_t isi_lookup_name(const char *);
 int isi_get_name(uint32_t cid, const char **name);
 int isi_write_parameter(uint8_t *p, int plen, int code, const void *in, int limit);
@@ -241,9 +243,9 @@ void * isi_alloc(size_t mem);
 void * isi_alloc_array(size_t count, size_t elemsize);
 int isi_text_enc(char *text, int limit, void const *vv, int len);
 
-void fetchtime(struct timespec * t);
-void isi_addtime(struct timespec *, size_t nsec);
-int isi_time_lt(struct timespec *, struct timespec *);
+void isi_fetch_time(isi_time_t * t);
+void isi_add_time(isi_time_t *, size_t nsec);
+int isi_time_lt(isi_time_t const *, isi_time_t const *);
 void isi_setrate(struct isiCPUInfo *info, size_t rate);
 
 #define L_DEBUG 5

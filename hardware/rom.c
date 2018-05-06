@@ -36,7 +36,7 @@ void EEROM_Register()
 	isi_register(&EEROM_Con);
 }
 
-static int EEROM_Reset(struct isiInfo *info, struct isiInfo *host, struct timespec mtime)
+static int EEROM_Reset(struct isiInfo *info, struct isiInfo *host, isi_time_t mtime)
 {
 	if(!info->mem) return 1;
 	if(!info->rvstate) return 1;
@@ -46,13 +46,13 @@ static int EEROM_Reset(struct isiInfo *info, struct isiInfo *host, struct timesp
 	return 0;
 }
 
-static int EEROM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int EEROM_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t crun)
 {
 	msg[2] = ((struct EEROM_rvstate *)info->rvstate)->sz;
 	return 0;
 }
 
-static int EEROM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int EEROM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t crun)
 {
 	size_t rsize = ((struct EEROM_rvstate *)info->rvstate)->sz << 1;
 	if(rsize > info->nvsize) rsize = info->nvsize;
@@ -67,7 +67,7 @@ static int EEROM_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, s
 	return 0;
 }
 
-static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int EEROM_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case ISE_RESET: return EEROM_Reset(info, src, mtime);

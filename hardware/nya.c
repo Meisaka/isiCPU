@@ -59,7 +59,7 @@ ISIREFLECT(struct Nya_LEM_rv,
 )
 
 static int Nya_LEM_Init(struct isiInfo *info);
-static struct isidcpudev Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
+static struct isidcpudev const Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
 static struct isiConstruct Nya_LEM_Con = {
 	.objtype = ISIT_HARDWARE,
 	.name = "nya_lem",
@@ -68,9 +68,19 @@ static struct isiConstruct Nya_LEM_Con = {
 	.rvproto = &ISIREFNAME(struct Nya_LEM_rv),
 	.meta = &Nya_LEM_Meta
 };
+static struct isidcpudev const Nya_LEM_MetaTC = {0x1802,0x734df615,MF_NYAE};
+static struct isiConstruct Nya_LEM_ConTC = {
+	.objtype = ISIT_HARDWARE,
+	.name = "tc_nya_lem",
+	.desc = "Nya LEM 1802 [TC]",
+	.Init = Nya_LEM_Init,
+	.rvproto = &ISIREFNAME(struct Nya_LEM_rv),
+	.meta = &Nya_LEM_MetaTC
+};
 void Nya_LEM_Register()
 {
 	isi_register(&Nya_LEM_Con);
+	isi_register(&Nya_LEM_ConTC);
 }
 
 static int Nya_LEM_Reset(struct isiInfo *info)
@@ -85,7 +95,7 @@ static int Nya_LEM_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, struct timespec crun)
+static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, isi_time_t crun)
 {
 	struct Nya_LEM_rv* dsp;
 	struct memory64x16 *mem;
@@ -134,7 +144,7 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 	return 0;
 }
 
-static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	if(len < 10) return -1;
 	switch(msg[0]) {

@@ -21,7 +21,7 @@
 #define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
 #define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
 
-static struct timespec LTUTime;
+static isi_time_t LTUTime;
 static uint32_t numberofcpus = 1;
 static int haltnow = 0;
 static int loadendian = 0;
@@ -52,7 +52,7 @@ extern struct isiConTable allcon;
 extern struct isiObjTable allobj;
 struct isiSessionTable allses;
 
-void isi_run_sync(struct timespec crun);
+void isi_run_sync(isi_time_t crun);
 void isi_register_objects();
 void isi_init_contable();
 void isi_objtable_init();
@@ -141,25 +141,19 @@ void showdiag_up(int l)
 	fprintf(stderr, "\e[%dA", l);
 }
 
-void fetchtime(struct timespec * t)
+void isi_fetch_time(isi_time_t * t)
 {
-	clock_gettime(CLOCK_MONOTONIC_RAW, t);
+	struct timespec mono;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &mono);
+	*t = mono.tv_sec * 1000000000 + mono.tv_nsec;
 }
 
-void isi_addtime(struct timespec * t, size_t nsec) {
-	size_t asec, ansec;
-	asec  = nsec / 1000000000;
-	ansec = nsec % 1000000000;
-	t->tv_nsec += ansec;
-	while(t->tv_nsec >= 1000000000) {
-		t->tv_nsec -= 1000000000;
-		asec++;
-	}
-	t->tv_sec += asec;
+void isi_add_time(isi_time_t * t, size_t nsec) {
+	*t += nsec;
 }
 
-int isi_time_lt(struct timespec *a, struct timespec *b) {
-	return (a->tv_sec < b->tv_sec) || ((a->tv_sec == b->tv_sec) && (a->tv_nsec < b->tv_nsec));
+int isi_time_lt(isi_time_t const *a, isi_time_t const *b) {
+	return (*a < *b);
 }
 
 void isi_setrate(struct isiCPUInfo *info, size_t rate) {
@@ -184,7 +178,7 @@ int isi_addcpu()
 	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
 	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND, 0, 0);
 	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP, 0, 0);
-	isi_make_object(isi_lookup_name("nya_lem"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tc_nya_lem"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("clock"), (struct objtype**)&ninfo, 0, 0);
@@ -193,7 +187,7 @@ int isi_addcpu()
 	isi_make_object(isi_lookup_name("speaker"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("keyboard"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tc_keyboard"), (struct objtype**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	isi_make_object(isi_lookup_name("kaihic32"), (struct objtype**)&ninfo, 0, 0);
@@ -246,7 +240,7 @@ void isi_debug_dump_cputable()
 }
 void isi_redis_test();
 
-int handle_stdin(struct isiSession *ses, struct timespec mtime)
+int handle_stdin(struct isiSession *ses, isi_time_t mtime)
 {
 	int i;
 	char cc[16];
@@ -508,12 +502,12 @@ static size_t isi_run_cpu(uint32_t cpunumber)
 	struct isiCPUInfo * ccpu;
 	struct isiInfo * ccpi;
 	ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cpunumber]);
-	struct timespec CRun;
+	isi_time_t CRun;
 	int ccq = 0;
 	int tcc = numberofcpus * 2;
 	size_t acccycles = 0;
 	if(tcc < 20) tcc = 20;
-	fetchtime(&CRun);
+	isi_fetch_time(&CRun);
 	while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
 		allstats.quanta++;
 		ccpi->c->RunCycles(ccpi, CRun);
@@ -523,12 +517,11 @@ static size_t isi_run_cpu(uint32_t cpunumber)
 			showdiag_dcpu(ccpi, 1);
 		}
 		ccpu->cycl = 0;
-		fetchtime(&CRun);
 		ccq++;
 	}
 	if(ccq >= tcc) gccq++;
 	allstats.cpusched++;
-	fetchtime(&CRun);
+	isi_fetch_time(&CRun);
 
 	if(ccpi->updev.t && ccpi->updev.t->c->RunCycles) {
 		ccpi->updev.t->c->RunCycles(ccpi->updev.t, CRun);
@@ -540,7 +533,6 @@ int main(int argc, char**argv, char**envp)
 {
 	uint32_t cux;
 	uintptr_t lucycles = 0;
-	uintptr_t lucpus = 0;
 	int paddlimit = 0;
 	int premlimit = 0;
 
@@ -596,45 +588,41 @@ int main(int argc, char**argv, char**envp)
 	sigaction(SIGHUP, &hnler, NULL);
 	sigaction(SIGPIPE, &hnler, NULL);
 
-	fetchtime(&LTUTime);
+	isi_fetch_time(&LTUTime);
 	lucycles = 0; // how many cycles ran (debugging)
 	cux = 0; // CPU index - currently never changes
 	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
 		showdiag_dcpu(allcpu.table[cux], 1);
 	}
 	while(!haltnow) {
-		struct timespec CRun;
+		isi_time_t CRun;
 
-		fetchtime(&CRun);
+		isi_fetch_time(&CRun);
 
 		if(!allcpu.count) {
-			struct timespec stime = {0, 10000};
-			nanosleep(&stime, NULL);
+			sleep(0);
 		} else {
 			lucycles += isi_run_cpu(cux);
 		}
-		fetchtime(&CRun);
+		isi_fetch_time(&CRun);
 		isi_run_sync(CRun);
 
-		fetchtime(&CRun);
-		if(CRun.tv_sec > LTUTime.tv_sec) { // roughly one second between status output
+		isi_fetch_time(&CRun);
+		if(CRun > LTUTime) { // one second between status output
 			if(rqrun && !flagdbg) { // interactive diag
 			double clkdelta;
 			float clkrate;
 			if(allcpu.count) showdiag_dcpu(allcpu.table[0], 0);
-			clkdelta = ((double)(CRun.tv_sec - LTUTime.tv_sec)) + (((double)CRun.tv_nsec) * 0.000000001);
-			clkdelta-=(((double)LTUTime.tv_nsec) * 0.000000001);
-			if(!lucpus) lucpus = 1;
+			clkdelta = 1.0 + ((double)(CRun - LTUTime)) * 0.000000001;
 			clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
-			fprintf(stderr, "DC: %.4f sec, %d at % 9.3f kHz   (% 8ld) [Q:% 8d, S:% 8d, SC:% 8d]\r",
+			fprintf(stderr, "DC: %.5f sec, n=%d CPUs at % 9.3f kHz avg (% 8ld) [Q:% 8d, S:% 8d, S/n:% 8d]\r",
 					clkdelta, numberofcpus, clkrate, gccq,
 					allstats.quanta, allstats.cpusched, allstats.cpusched / numberofcpus
 					);
 			if(allcpu.count) showdiag_up(4);
 			}
-			fetchtime(&LTUTime);
+			isi_add_time(&LTUTime, 1000000000);
 			lucycles = 0;
-			lucpus = 0;
 			gccq = 0;
 			memset(&allstats, 0, sizeof(struct stats));
 			if(premlimit < 20) premlimit+=10;

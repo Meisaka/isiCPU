@@ -1,4 +1,10 @@
 
+0.25
+------
+ - fix time
+ - added TC hardware IDs
+ - added stop netmsg implementation
+
 0.24
 ------
 

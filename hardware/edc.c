@@ -41,7 +41,7 @@ int EDC_Init(struct EDC_Dev *dsp, unsigned w, unsigned h)
 	return 0;
 }
 
-int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct EDC_Dev *dsp;
 	if(!info) return -1;
@@ -57,7 +57,7 @@ int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct t
 	return 0;
 }
 
-int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct EDC_Dev *dsp;
 	int i;
@@ -139,7 +139,7 @@ int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct tim
 	return 0;
 }
 
-int EDC_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+int EDC_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case 0: break;

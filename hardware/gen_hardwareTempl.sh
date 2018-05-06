@@ -50,19 +50,19 @@ static int ${NAME}_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int ${NAME}_OnReset(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int ${NAME}_OnReset(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct ${NAME}_rvstate *dev = (struct ${NAME}_rvstate*)info->rvstate;
 	return 0;
 }
 
-static int ${NAME}_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int ${NAME}_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct ${NAME}_rvstate *dev = (struct ${NAME}_rvstate*)info->rvstate;
 	return 0;
 }
 
-static int ${NAME}_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int ${NAME}_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t crun)
 {
 	struct ${NAME}_rvstate *dev = (struct ${NAME}_rvstate*)info->rvstate;
 	switch(msg[0]) {
@@ -72,14 +72,14 @@ static int ${NAME}_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 0;
 }
 
-static int ${NAME}_Tick(struct isiInfo *info, struct timespec crun)
+static int ${NAME}_Tick(struct isiInfo *info, isi_time_t crun)
 {
 	struct ${NAME}_rvstate *dev = (struct ${NAME}_rvstate*)info->rvstate;
 	// if(!isi_time_lt(&info->nrun, &crun)) return 0; /* wait for scheduled time */
 	return 0;
 }
 
-static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime);
+static int ${NAME}_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime);
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */

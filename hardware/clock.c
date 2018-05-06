@@ -43,14 +43,13 @@ static int Clock_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec crun)
+static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, isi_time_t crun)
 {
 	struct Clock_rvstate *clk = (struct Clock_rvstate*)info->rvstate;
 	switch(msg[0]) {
 	case 0:
 		if(!clk->rate && msg[1]) {
-			info->nrun.tv_sec = crun.tv_sec;
-			info->nrun.tv_nsec = crun.tv_nsec;
+			info->nrun = crun;
 			isilog(L_DEBUG, "Clock Reset\n");
 			clk->accum = 0;
 		}
@@ -68,7 +67,7 @@ static int Clock_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, i
 	return 0;
 }
 
-static int Clock_Tick(struct isiInfo *info, struct timespec crun)
+static int Clock_Tick(struct isiInfo *info, isi_time_t crun)
 {
 	struct Clock_rvstate *clk = (struct Clock_rvstate*)info->rvstate;
 	if(!clk->rate) return 0;
@@ -85,15 +84,15 @@ static int Clock_Tick(struct isiInfo *info, struct timespec crun)
 		}
 	}
 	if(clk->accum++ < 15) { /* magically sync the 60Hz base clock to 1 second */
-		isi_addtime(&info->nrun, 16666666); /* tick */
+		isi_add_time(&info->nrun, 16666666); /* tick */
 	} else {
-		isi_addtime(&info->nrun, 16666676); /* tock (occationally) */
+		isi_add_time(&info->nrun, 16666676); /* tock (occationally) */
 		clk->accum = 0;
 	}
 	return 0;
 }
 
-static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int Clock_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case ISE_RESET: return 0;

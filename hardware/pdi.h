@@ -1,9 +1,4 @@
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <stdint.h>
 #include "../isitypes.h"
 
 #define PDI_IBUSY 0x1000
@@ -21,12 +16,12 @@ struct PDI_port {
 	uint16_t dat[PDI_BUFLIMIT];
 };
 
-int pdi_addrxword(struct PDI_port *p, struct timespec *pt, uint16_t word, struct timespec const *now);
-int pdi_addtxword(struct PDI_port *p, struct timespec *pt, uint16_t word, struct timespec const *now);
+int pdi_addrxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now);
+int pdi_addtxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now);
 int pdi_getword(struct PDI_port *p, uint16_t *word);
 int pdi_getrxoverflow(struct PDI_port *p);
 int pdi_isbusy(struct PDI_port *p);
 int pdi_hasdata(struct PDI_port *p);
 int pdi_hasfree(struct PDI_port *p);
-int pdi_process(struct PDI_port *p, struct timespec *pt, struct timespec const *now);
+int pdi_process(struct PDI_port *p, isi_time_t *pt, isi_time_t const *now);
 

@@ -81,8 +81,8 @@ static inline uint16_t DCPU_derefB(int, struct DCPU *, isiram16);
 static int DCPU_setonfire(struct DCPU *);
 static inline void DCPU_skipref(int, struct DCPU *);
 static int DCPU_reset(struct isiInfo *);
-static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, int32_t lsindex, uint16_t *, int, struct timespec);
-static int DCPU_run(struct isiInfo *, struct timespec);
+static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, int32_t lsindex, uint16_t *, int, isi_time_t);
+static int DCPU_run(struct isiInfo *, isi_time_t);
 static int DCPU_init(struct isiInfo *info);
 
 static struct isiConstruct DCPU_Con = {
@@ -90,7 +90,7 @@ static struct isiConstruct DCPU_Con = {
 	.name = "dcpu",
 	.desc = "DCPU-16 1.7",
 	.Init = DCPU_init,
-	.rvproto = &ISIREFNAME(struct DCPU),
+	.rvproto = &ISIREFNAME(struct DCPU)
 };
 
 void DCPU_Register()
@@ -237,7 +237,7 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 	}
 }
 
-static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
 	if(msg[0] == ISE_SREG) {
@@ -470,7 +470,7 @@ static const int DCPU_dwtbl[] =
 	0, 0, 1, 1, 0, 0, 0, 0
 };
 
-static int DCPU_run(struct isiInfo * info, struct timespec crun)
+static int DCPU_run(struct isiInfo * info, isi_time_t crun)
 {
 	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
 	struct DCPU *pr = (struct DCPU*)info->rvstate;
@@ -496,9 +496,8 @@ static int DCPU_run(struct isiInfo * info, struct timespec crun)
 			ccq = 1;
 			l_info->ctl &= ~ISICTL_STEPE;
 		} else {
-			info->nrun.tv_sec = crun.tv_sec;
-			info->nrun.tv_nsec = crun.tv_nsec;
-			isi_addtime(&info->nrun, l_info->runrate);
+			info->nrun = crun;
+			isi_add_time(&info->nrun, l_info->runrate);
 		}
 	} else {
 		ccq = l_info->rate;
@@ -854,7 +853,7 @@ ecpu:
 		ccq -= cycl; // each op uses cycles
 	}
 	l_info->cycl += cycl;
-	isi_addtime(&info->nrun, cycl * l_info->runrate);
+	isi_add_time(&info->nrun, cycl * l_info->runrate);
 	cycl = 0;
 	} // while ccq
 	return 0;

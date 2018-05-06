@@ -266,7 +266,7 @@ int isi_find_obj_index(struct objtype *target)
 	return -1;
 }
 
-void isi_run_sync(struct timespec crun)
+void isi_run_sync(isi_time_t crun)
 {
 	size_t i, k;
 	int x;
@@ -437,7 +437,7 @@ void isi_run_sync(struct timespec crun)
 		case ISIN_SYNC_DEVRV:
 			if((ns->ctl & NSY_OBJ) && !(ns->ctl & NSY_SYNCOBJ)) {
 				ns->ctl |= NSY_SYNCOBJ;
-				struct isiReflection *rfl;
+				struct isiReflection const *rfl;
 				if(dev->rvproto) {
 					rfl = dev->rvproto;
 					*(uint32_t*)(allsync.out+4) = dev->id.id;
@@ -467,14 +467,13 @@ void isi_run_sync(struct timespec crun)
 			}
 			break;
 		}
-		isi_addtime(&ns->nrun, ns->rate);
+		isi_add_time(&ns->nrun, ns->rate);
 		k = 10;
 		while(--k && isi_time_lt(&ns->nrun, &crun)) {
-			isi_addtime(&ns->nrun, ns->rate);
+			isi_add_time(&ns->nrun, ns->rate);
 		}
 		if(!k) {
-			ns->nrun.tv_sec = crun.tv_sec;
-			ns->nrun.tv_nsec = crun.tv_nsec;
+			ns->nrun = crun;
 		}
 	}
 }

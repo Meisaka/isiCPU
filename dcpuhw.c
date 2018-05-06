@@ -52,7 +52,7 @@ static int HWM_Attached(struct isiInfo *info, int32_t point, struct isiInfo *dev
 	return 0;
 }
 
-static int HWM_Query(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int HWM_Query(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	int r;
 	r = 0;
@@ -109,7 +109,7 @@ static int HWM_Query(struct isiInfo *info, struct isiInfo *src, int32_t lsindex,
 	return r;
 }
 
-static int HWM_Run(struct isiInfo *info, struct timespec crun)
+static int HWM_Run(struct isiInfo *info, isi_time_t crun)
 {
 	size_t k;
 	size_t hs;

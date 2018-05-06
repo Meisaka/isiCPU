@@ -160,7 +160,7 @@ int isi_is_infodev(struct isiInfo const *item)
 	return (item->id.objtype > 0x2f00);
 }
 
-int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, struct timespec mtime)
+int isi_message_dev(struct isiInfo *src, int32_t srcindex, uint16_t *m, int l, isi_time_t mtime)
 {
 	if(!src || srcindex < ISIAT_LIMIT) return -1;
 	struct isiInfo *dest = NULL;
@@ -401,12 +401,12 @@ int isi_create_object(int objtype, struct objtype **out)
 }
 
 static struct isiInfoCalls emptyobject = { 0, };
-int isi_premake_object(int objtype, struct isiConstruct **outcon, struct objtype **out)
+int isi_premake_object(int objtype, struct isiConstruct const **outcon, struct objtype **out)
 {
 	uint32_t x;
 	int i;
 	int rs = 0;
-	struct isiConstruct *con = NULL;
+	struct isiConstruct const *con = NULL;
 	if(!objtype || !out) return ISIERR_INVALIDPARAM;
 	for(x = 0; x < allcon.count; x++) {
 		if(allcon.table[x]->objtype == objtype) {
@@ -471,7 +471,7 @@ int isi_make_object(int objtype, struct objtype **out, const uint8_t *cfg, size_
 {
 	int rs = 0;
 	struct objtype *ndev;
-	struct isiConstruct *con = NULL;
+	struct isiConstruct const *con = NULL;
 	rs = isi_premake_object(objtype, &con, &ndev);
 	if(rs) return rs;
 	if(objtype < 0x2f00) {
@@ -525,11 +525,11 @@ int isi_init_contable()
 	struct isiConTable *t = &allcon;
 	t->limit = 32;
 	t->count = 0;
-	t->table = (struct isiConstruct**)isi_alloc(t->limit * sizeof(void*));
+	t->table = (struct isiConstruct const**)isi_alloc(t->limit * sizeof(void*));
 	return 0;
 }
 
-int isi_contable_add(struct isiConstruct *obj)
+int isi_contable_add(struct isiConstruct const *obj)
 {
 	if(!obj) return -1;
 	void *n;
@@ -537,7 +537,7 @@ int isi_contable_add(struct isiConstruct *obj)
 		n = isi_realloc(allcon.table, (allcon.limit + allcon.limit) * sizeof(void*));
 		if(!n) return -5;
 		allcon.limit += allcon.limit;
-		allcon.table = (struct isiConstruct**)n;
+		allcon.table = (struct isiConstruct const**)n;
 	}
 	allcon.table[allcon.count++] = obj;
 	return 0;
@@ -704,6 +704,27 @@ int isi_push_dev(struct isiDevTable *t, struct isiInfo *d)
 		if(r) return r;
 	}
 	t->table[t->count++] = d;
+	return 0;
+}
+
+int isi_pop_dev(struct isiDevTable *t, struct isiInfo *d)
+{
+	if(!d) return -1;
+	if(!t->limit || !t->table) isi_inittable(t);
+	if(!t->count) return -1;
+	size_t index = 0;
+	uint32_t id = d->id.id;
+	while(index < t->count) { /* find the object */
+		struct isiInfo *obj = t->table[index];
+		if(obj && obj->id.id == id) break;
+		index++;
+	}
+	if(index >= t->count) return -1;
+	t->count--;
+	do { /* shift everything down */
+		t->table[index] = t->table[index + 1];
+		index++;
+	} while(index < t->count);
 	return 0;
 }
 

@@ -38,12 +38,12 @@ static int vppDACA_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int vppDACA_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int vppDACA_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	return 0;
 }
 
-static int vppDACA_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec crun)
+static int vppDACA_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t crun)
 {
 	struct vppDACA_rvstate *dev = (struct vppDACA_rvstate*)info->rvstate;
 	switch(msg[0]) {
@@ -66,7 +66,7 @@ static int vppDACA_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg,
 	return 0;
 }
 
-static int vppDACA_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int vppDACA_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	struct vppDACA_rvstate *dev = (struct vppDACA_rvstate*)info->rvstate;
 	switch(msg[0]) { /* message type, msg[1] is device index */

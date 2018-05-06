@@ -27,8 +27,8 @@ ISIREFLECT(struct KaiHIC_rvstate,
 
 /* state while running on this server (server volatile) */
 struct KaiHIC_svstate {
-	struct timespec tx; /* transmit timer */
-	struct timespec rx[32]; /* receiver timers */
+	isi_time_t tx; /* transmit timer */
+	isi_time_t rx[32]; /* receiver timers */
 };
 ISIREFLECT(struct KaiHIC_svstate,
 )
@@ -75,12 +75,12 @@ static int KaiHIC_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static int KaiHIC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int KaiHIC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	return 0;
 }
 
-static int KaiHIC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, struct timespec mtime)
+static int KaiHIC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)info->rvstate;
 	struct KaiHIC_svstate *devv = (struct KaiHIC_svstate*)info->svstate;
@@ -165,16 +165,15 @@ static int KaiHIC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, 
 	return 0;
 }
 
-static int KaiHIC_Tick(struct isiInfo *info, struct timespec crun)
+static int KaiHIC_Tick(struct isiInfo *info, isi_time_t crun)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)info->rvstate;
 	struct KaiHIC_svstate *devv = (struct KaiHIC_svstate*)info->svstate;
-	if(!isi_time_lt(&info->nrun, &crun)) return 0; /* wait for scheduled time */
-	if(!info->nrun.tv_sec) {
-		info->nrun.tv_sec = crun.tv_sec;
-		info->nrun.tv_nsec = crun.tv_nsec;
+	if(!info->nrun) {
+		info->nrun = crun;
 	}
-	isi_addtime(&info->nrun, 100000);
+	if(!isi_time_lt(&info->nrun, &crun)) return 0; /* wait for scheduled time */
+	isi_add_time(&info->nrun, 100000);
 	uint16_t iom[3];
 	if(pdi_process(&dev->tx, &devv->tx, &crun)) {
 		iom[0] = ISE_DPSI;
@@ -203,7 +202,7 @@ static int KaiHIC_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int KaiHIC_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int KaiHIC_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)info->rvstate;
 	switch(msg[0]) { /* message type, msg[1] is device index */

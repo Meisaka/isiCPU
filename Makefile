@@ -1,11 +1,10 @@
 CC=gcc -g 
 CFLAGS += -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
 
-cctest : CC=g++ -g
+cctest : CC=g++ -g -std=gnu++11
 cctest : CFLAGS=-O2 -Wall -D_POSIX_C_SOURCE=200809L
 
 SRCFILES=$(shell find . -name '*.c')
-SRCPFILES=$(shell find . -name '*.cpp')
 INCFILES=$(shell find . -name '*.h')
 THEFILES=$(basename $(SRCFILES))
 THEPFILES=$(basename $(SRCPFILES))
@@ -19,12 +18,12 @@ cctest: all
 
 clean:
 	@rm -fv isicpu
+	@rm -fv depends
 	@rm -fv ${THEOBJ}
 
 depends: ${SRCFILES} ${SRCPFILES} ${INCFILES} Makefile
 	@rm -fv depends
 	@for i in ${THEFILES} ; do echo "depends $$(${CC} ${CFLAGS} -MM $$i.c -MT $$i.o) Makefile" >> depends ; done
-	@for i in ${THEPFILES} ; do echo "depends $$(${CXX} ${CXXFLAGS} -MM $$i.cpp -MT $$i.o) Makefile" >> depends ; done
 
 isicpu: ${THEOBJ} Makefile depends
 	@${CC} ${THEOBJ} -Wl,-as-needed -lrt -o isicpu

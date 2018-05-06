@@ -15,7 +15,7 @@ ISIREFLECT(struct LKBD,
 )
 
 static int Keyboard_Init(struct isiInfo *info);
-static struct isidcpudev Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
+static struct isidcpudev const Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
 static struct isiConstruct Keyboard_Con = {
 	.objtype = ISIT_HARDWARE,
 	.name = "keyboard",
@@ -25,9 +25,20 @@ static struct isiConstruct Keyboard_Con = {
 	.svproto = NULL,
 	.meta = &Keyboard_Meta
 };
+static struct isidcpudev const Keyboard_MetaTC = {0x0001,0x30c17406,MF_ECIV};
+static struct isiConstruct Keyboard_ConTC = {
+	.objtype = ISIT_HARDWARE,
+	.name = "tc_keyboard",
+	.desc = "Generic Keyboard [TC]",
+	.Init = Keyboard_Init,
+	.rvproto = &ISIREFNAME(struct LKBD),
+	.svproto = NULL,
+	.meta = &Keyboard_MetaTC
+};
 void Keyboard_Register()
 {
 	isi_register(&Keyboard_Con);
+	isi_register(&Keyboard_ConTC);
 }
 
 static void Keyboard_KDown(struct LKBD *kb, int kc)
@@ -85,7 +96,7 @@ static void Keyboard_KUp(struct LKBD *kb, int kc)
 	}
 }
 
-static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int Keyboard_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	struct LKBD* kyb;
 	uint16_t iom[3];

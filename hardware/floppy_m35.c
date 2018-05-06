@@ -81,7 +81,7 @@ static int Disk_M35FD_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
+static void Disk_M35FD_statechange(struct isiInfo *info, isi_time_t mtime)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	uint16_t iom[3];
@@ -89,11 +89,11 @@ static void Disk_M35FD_statechange(struct isiInfo *info, struct timespec *mtime)
 		iom[0] = 2;
 		iom[1] = 0;
 		iom[2] = dev->iword;
-		isi_message_dev(info, ISIAT_UP, iom, 3, *mtime);
+		isi_message_dev(info, ISIAT_UP, iom, 3, mtime);
 	}
 }
 
-static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, struct timespec crun)
+static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, isi_time_t crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
@@ -115,7 +115,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			msg[1] = 0;
 		}
 		msg[2] = dev->errcode;
-		if(dev->errcode) Disk_M35FD_statechange(info, &crun);
+		if(dev->errcode) Disk_M35FD_statechange(info, crun);
 		dev->errcode = ERR_M35_NONE;
 		break;
 	case 1:
@@ -137,9 +137,9 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			dev->rwaddr = msg[4];
 			dev->oper = ST_M35_BUSYREAD;
 			msg[1] = 1;
-			Disk_M35FD_statechange(info, &crun);
+			Disk_M35FD_statechange(info, crun);
 		}
-		if(lerr != dev->errcode) Disk_M35FD_statechange(info, &crun);
+		if(lerr != dev->errcode) Disk_M35FD_statechange(info, crun);
 		break;
 	case 3:
 		msg[1] = 0;
@@ -163,40 +163,39 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			dev->oper = ST_M35_BUSYWRITE;
 			r = 512;
 			msg[1] = 1;
-			Disk_M35FD_statechange(info, &crun);
+			Disk_M35FD_statechange(info, crun);
 		}
-		if(lerr != dev->errcode) Disk_M35FD_statechange(info, &crun);
+		if(lerr != dev->errcode) Disk_M35FD_statechange(info, crun);
 		break;
 	}
 	return r;
 }
 
-static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
+static int Disk_M35FD_Tick(struct isiInfo *info, isi_time_t crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
 	struct isiInfo *media = 0;
-	if(!info->nrun.tv_sec) {
-		info->nrun.tv_sec = crun.tv_sec;
-		info->nrun.tv_nsec = crun.tv_nsec;
+	if(!info->nrun) {
+		info->nrun = crun;
 	}
 	while(isi_time_lt(&info->nrun, &crun)) {
 		if(dev->oper >= ST_M35_BUSY) {
 			if(isi_getindex_dev(info, 0, &media) || !media->c->MsgIn) {
 				dev->errcode = ERR_M35_EJECT;
 				dev->oper = ST_M35_NO_MEDIA;
-				Disk_M35FD_statechange(info, &info->nrun);
+				Disk_M35FD_statechange(info, info->nrun);
 				continue;
 			}
 			if(dev->seektrack != dev->track) {
-				isi_addtime(&info->nrun, 2400000);
+				isi_add_time(&info->nrun, 2400000);
 				dev->track += (dev->seektrack < dev->track) ?-1:1;
 				dev->sector += 73;
 				dev->sector %= 18;
 			} else {
 				dev->sector++;
 				dev->sector %= 18;
-				isi_addtime(&info->nrun, 32573);
+				isi_add_time(&info->nrun, 32573);
 				uint32_t seekblock;
 				isi_disk_getindex(media, &seekblock);
 				if((dev->seeksector + 1) % 18 == dev->sector && seekblock == dev->seeksector >> 2) {
@@ -217,22 +216,22 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 						}
 					}
 					dev->oper = isi_disk_isreadonly(media)? ST_M35_IDLEP:ST_M35_IDLE;
-					Disk_M35FD_statechange(info, &info->nrun);
+					Disk_M35FD_statechange(info, info->nrun);
 				}
 			}
 		} else {
 			if(isi_getindex_dev(info, 0, &media)) {
 				if(dev->oper != ST_M35_NO_MEDIA) {
 					dev->oper = ST_M35_NO_MEDIA;
-					Disk_M35FD_statechange(info, &info->nrun);
+					Disk_M35FD_statechange(info, info->nrun);
 				}
 			} else {
 				if(dev->oper == ST_M35_NO_MEDIA) {
 					dev->oper = isi_disk_isreadonly(media)? ST_M35_IDLEP:ST_M35_IDLE;
-					Disk_M35FD_statechange(info, &info->nrun);
+					Disk_M35FD_statechange(info, info->nrun);
 				}
 			}
-			isi_addtime(&info->nrun, 50000000);
+			isi_add_time(&info->nrun, 50000000);
 			dev->sector += 1535;
 			dev->sector %= 18;
 		}
@@ -240,7 +239,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, struct timespec crun)
 	return 0;
 }
 
-static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */

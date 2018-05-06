@@ -6,4 +6,9 @@ isicpu
 *.swp
 *.bin
 depends
-
+*.idi
+*.asm
+*.log
+*.sh
+*.zip
+*.txt

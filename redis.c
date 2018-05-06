@@ -16,8 +16,8 @@ extern struct isiDevTable alldev;
 extern struct isiConTable allcon;
 extern struct isiObjTable allobj;
 int isi_create_object(int objtype, struct objtype **out);
-static int redis_handle_rd(struct isiSession *ses, struct timespec mtime);
-static int redis_handle_rq(struct isiSession *ses, struct timespec mtime);
+static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime);
+static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime);
 
 #define REDIS_NIL 0
 #define REDIS_STR 1
@@ -350,7 +350,7 @@ struct redis_persist_type {
 	{"nA"}
 };
 
-static int redis_handle_rq(struct isiSession *ses, struct timespec mtime)
+static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 {
 	struct redis_istate *istate = (struct redis_istate *)ses->istate;
 	struct sescommandset *ncmd = 0;
@@ -457,7 +457,7 @@ static int redis_handle_rq(struct isiSession *ses, struct timespec mtime)
 	return 0;
 }
 
-static int redis_handle_rd(struct isiSession *ses, struct timespec mtime)
+static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 {
 	int i;
 	struct redis_istate *istate = (struct redis_istate *)ses->istate;

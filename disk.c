@@ -253,7 +253,7 @@ static int isi_write_disk(struct isiInfo *info)
 	return -1;
 }
 
-static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, struct timespec mtime)
+static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
 {
 	if(info->id.objtype != ISIT_DISK) return -1;
 	struct isiDisk *disk = (struct isiDisk *)info;

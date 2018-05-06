@@ -22,6 +22,7 @@
 
 /* isi Error codes */
 #define ISIERR_SUCCESS 0
+#define ISIERR_OK 0
 #define ISIERR_FAIL -1
 #define ISIERR_NOTFOUND 1
 #define ISIERR_INVALIDPARAM -2
