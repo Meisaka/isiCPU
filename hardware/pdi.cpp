@@ -25,7 +25,7 @@ int pdi_addtxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t 
 	return 0;
 }
 
-int pdi_getword(struct PDI_port *p, uint16_t *word)
+int pdi_getword(struct PDI_port *p, uint32_t *word)
 {
 	int dc = PDI_GETC(p->stat);
 	int rc = PDI_GETR(p->stat);

@@ -18,7 +18,7 @@ struct PDI_port {
 
 int pdi_addrxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now);
 int pdi_addtxword(struct PDI_port *p, isi_time_t *pt, uint16_t word, isi_time_t const *now);
-int pdi_getword(struct PDI_port *p, uint16_t *word);
+int pdi_getword(struct PDI_port *p, uint32_t *word);
 int pdi_getrxoverflow(struct PDI_port *p);
 int pdi_isbusy(struct PDI_port *p);
 int pdi_hasdata(struct PDI_port *p);

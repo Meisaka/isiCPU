@@ -6,13 +6,12 @@ A network server for emulating CPUs (DCPU 1.7 specifically), and providing API a
 Actual Features
 ------
 
- - [DCPU 1.7] Emulation, good accuracy and error handling.
- - Keyboard, LEM, Clock, Mackapar floppy, ROM, IMVA are emulated.
  - CPUs and hardware store components of state in isiCPU.
  - Fairly abstract and portable hardware and CPU interface for emulation.
  - Network access to multiple DCPU terminals (Keyboard and Display).
  - Multiple DCPUs can be run at once, and can be added at runtime.
  - Configurable TCP port.
+ - supports both IPv4 and IPv6 using TCP sockets.
  - DCPU disassembly and debugger.
  - Endian swap option for bin files.
  - bin files load to a "rom" device.
@@ -20,16 +19,25 @@ Actual Features
  - load estimation and support for multiple CPUs (mostly works)
  - single-threaded processes, multiple processes must be run on a server to use more cores.
 
+Supported Emulations
+------
+ - [DCPU 1.7] Emulation
+ - DCPU generic ASCII Keyboard
+ - DCPU generic Clock
+ - Mackapar 3.5" floppy
+ - generic FlashROM/EEPROM
+ - Nya Elektriska LEM 1802
+ - MEI Imva
+ - MEI EDC (direct connect)
+ - 2 channel speaker
+ - Kai Communications Hardware Interface Card (HIC)
+
 Design Goals and Planned Features
 ------
 
- - (Better) Support for multiple types of CPU emulation
- - Support more hardware emulations. (It's close!)
  - Add various [new hardware devices][Hardware]
  - Provide a network interface to the CPU and associated hardware. (WIP)
- - Both hardware and CPUs should each have their own unique ID number. (WIP)
- - CPUs and hardware must be able to be added/removed without affecting others. (WIP)
- - Runtime add/remove/configure/debug of hardware and CPUs from network API. (WIP
+ - Runtime debug of hardware and CPUs from network API. (WIP)
  - Emulation layer will provide an API that allows add-on shared libraries.
  - Add-on libraries will be able to be loaded during emulation.
  - Add CPU [TR3200]
@@ -37,8 +45,8 @@ Design Goals and Planned Features
  - Add CPU [Mira2204]
  - support clustered networking.
  - Multiple processes on the same server will use Unix Domain sockets (or equivilent).
- - isiCPU will support both IPv4 and IPv6 using TCP sockets.
- - each instance of isiCPU in a cluster will allow migrating emulation state(s) to another server, both for redundancy and load sharing.
+ - support using UDP sockets.
+ - each instance in a cluster should allow migrating emulation state(s) to another server, both for redundancy and load sharing.
  - instances will be able to be added and removed dyamically from a cluster.
 
   [DCPU 1.7]: https://raw.githubusercontent.com/gatesphere/demi-16/master/docs/dcpu-specs/dcpu-1-7.txt "DCPU Specs"
@@ -50,11 +58,11 @@ Design Goals and Planned Features
 Programming Language
 ------
 
- - isiCPU is written in C, but it should also allow valid C++ compilation.
- - The CPU and Hardware API must be in C.
- - JIT (if used) may include assembly language that will be called from C.
- - optional GPU acceleration features.
- - GPU acceleration is an optional feature, all functions must run in C first.
+ - isiCPU is written in C++ using the c++11 standard or newer.
+ - The CPU and Hardware API must be in C++.
+ - Dynamic libraries should provide a C-style entry point (extern "C")
+ - JIT (if used) may include assembly language, which should support IA32 and amd64.
+ - (planned) optional GPU acceleration features?
 
 Building
 ------

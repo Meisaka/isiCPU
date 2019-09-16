@@ -171,26 +171,26 @@ int isi_addcpu()
 {
 	struct isiInfo *bus, *ninfo;
 	struct isiCPUInfo *cpu;
-	isiram16 nmem;
-	isi_make_object(isi_lookup_name("dcpu"), (struct objtype**)&cpu, 0, 0);
+	isiram nmem;
+	isi_make_object(isi_lookup_name("dcpu"), (isiObject**)&cpu, 0, 0);
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_TRACE | ISICTL_STEP) : 0;
-	isi_make_object(isi_lookup_name("memory_16x64k"), (struct objtype**)&nmem, 0, 0);
-	isi_make_object(isi_lookup_name("dcpu_hwbus"), (struct objtype**)&bus, 0, 0);
+	isi_make_object(isi_lookup_name("memory_16x64k"), (isiObject**)&nmem, 0, 0);
+	isi_make_object(isi_lookup_name("dcpu_hwbus"), (isiObject**)&bus, 0, 0);
 	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND, 0, 0);
 	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP, 0, 0);
-	isi_make_object(isi_lookup_name("tc_nya_lem"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tc_nya_lem"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("clock"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("clock"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("speaker"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("speaker"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("tc_keyboard"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tc_keyboard"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("kaihic32"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("kaihic32"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	if(binf) {
 		uint8_t ist[24];
@@ -199,11 +199,11 @@ int isi_addcpu()
 		isi_fname_id(binf, &id);
 		isi_write_parameter(ist, 24, 2, &id, sizeof(uint64_t));
 		if(loadendian) isi_write_parameter(ist, 24, 3, &id, 0);
-		isi_make_object(isi_lookup_name("rom"), (struct objtype**)&ninfo, ist, 24);
+		isi_make_object(isi_lookup_name("rom"), (isiObject**)&ninfo, ist, 24);
 		isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	}
 
-	isi_make_object(isi_lookup_name("mack_35fd"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("mack_35fd"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	if(diskf) {
 		uint8_t ist[24];
@@ -212,10 +212,10 @@ int isi_addcpu()
 		struct isiInfo *ndsk;
 		isi_fname_id(diskf, &dsk);
 		isi_write_parameter(ist, 24, 1, &dsk, sizeof(uint64_t));
-		isi_make_object(isi_lookup_name("disk"), (struct objtype**)&ndsk, ist, 24);
+		isi_make_object(isi_lookup_name("disk"), (isiObject**)&ndsk, ist, 24);
 		isi_attach(ninfo, 0, ndsk, ISIAT_UP, 0, 0);
 	}
-	isi_make_object(isi_lookup_name("imva"), (struct objtype**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("imva"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	return 0;
@@ -225,7 +225,7 @@ void isi_debug_dump_objtable()
 {
 	uint32_t u = 0;
 	while(u < allobj.count) {
-		fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u]->id, allobj.table[u]->objtype);
+		fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u].ptr->id, allobj.table[u].ptr->otype);
 		u++;
 	}
 }
@@ -234,17 +234,25 @@ void isi_debug_dump_cputable()
 {
 	uint32_t u = 0;
 	while(u < allcpu.count) {
-		fprintf(stderr, "cpu-list: [%08x]: %x\n", allcpu.table[u]->id.id, allcpu.table[u]->id.objtype);
+		fprintf(stderr, "cpu-list: [%08x]: %x\n", allcpu.table[u]->id, allcpu.table[u]->otype);
 		u++;
 	}
 }
 void isi_redis_test();
 
-int handle_stdin(struct isiSession *ses, isi_time_t mtime)
+class isiSessionTTY : public isiSession {
+	virtual int Recv(isi_time_t mtime);
+	virtual int STick(isi_time_t mtime) { return 0; }
+	virtual int LTick(isi_time_t mtime) { return 0; }
+	virtual int AsyncDone(struct sescommandset *cmd, int result) { return 0; }
+};
+static isiClass<isiSessionTTY> isiSessionTTY_C(ISIT_SESSION_TTY, "<isiSessionTTY>", "");
+
+int isiSessionTTY::Recv(isi_time_t mtime)
 {
 	int i;
 	char cc[16];
-	i = read(ses->sfd, cc, 16);
+	i = read(this->sfd, cc, 16);
 	if(i < 1) return 0;
 	struct isiCPUInfo *cpu = NULL;
 	if(allcpu.count) {
@@ -299,8 +307,8 @@ int handle_stdin(struct isiSession *ses, isi_time_t mtime)
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			ti = ((isiram16)allcpu.table[0]->mem)->ram[t];
-			fprintf(stderr, "debug: read %04x:%04x\n", t, ti);
+			ti = ((isiram)allcpu.table[0]->mem)->d_rd(t);
+			fprintf(stderr, "\e[Kdebug: read %04x:%04x\n", t, ti);
 		}
 		break;
 	case 'b':
@@ -320,9 +328,9 @@ int handle_stdin(struct isiSession *ses, isi_time_t mtime)
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			isi_cpu_togglebrk((isiram16)allcpu.table[0]->mem, t);
-			k = isi_cpu_isbrk((isiram16)allcpu.table[0]->mem, t);
-			fprintf(stderr, "debug: Break point %sabled at %04x\n", k?"en":"dis",t);
+			((isiram)allcpu.table[0]->mem)->togglebrk(t);
+			k = ((isiram)allcpu.table[0]->mem)->isbrk(t);
+			fprintf(stderr, "\e[Kdebug: Break point %sabled at %04x\n", k?"en":"dis",t);
 		}
 		break;
 	case 'x':
@@ -331,7 +339,7 @@ int handle_stdin(struct isiSession *ses, isi_time_t mtime)
 	case 't':
 		if(!cpu) break;
 		cpu->ctl ^= ISICTL_TRACEC;
-		fprintf(stderr, "debug: trace on continue %sabled\n", (cpu->ctl & ISICTL_TRACEC)?"en":"dis");
+		fprintf(stderr, "\e[Kdebug: trace on continue %sabled\n", (cpu->ctl & ISICTL_TRACEC)?"en":"dis");
 		break;
 	case 'n':
 		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
@@ -358,7 +366,7 @@ int make_interactive()
 {
 	struct isiSession *ses;
 	int i;
-	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
+	if((i= isi_create_object(ISIT_SESSION_TTY, NULL, (isiObject**)&ses))) {
 		return i;
 	}
 	if(fcntl(0, F_SETFL, O_NONBLOCK) < 0) {
@@ -366,7 +374,7 @@ int make_interactive()
 		return -1;
 	}
 	ses->sfd = 0;
-	ses->Recv = handle_stdin;
+	// TODO tty session class!
 	isi_pushses(ses);
 	return 0;
 }
@@ -395,8 +403,9 @@ static int parse_args(int argc, char**argv)
 					verblevel++;
 					break;
 				case 'l':
+					verblevel = L_DEBUG;
 					isi_scan_dir();
-					break;
+					return 1;
 				case 'F':
 					usefs = 1;
 					break;
@@ -510,7 +519,7 @@ static size_t isi_run_cpu(uint32_t cpunumber)
 	isi_fetch_time(&CRun);
 	while(ccq < tcc && isi_time_lt(&ccpi->nrun, &CRun)) {
 		allstats.quanta++;
-		ccpi->c->RunCycles(ccpi, CRun);
+		ccpi->Run(CRun);
 		//TODO some hardware may need to work at the same time
 		acccycles += ccpu->cycl;
 		if(rqrun && (ccpu->ctl & ISICTL_TRACE) && (ccpu->cycl)) {
@@ -523,11 +532,15 @@ static size_t isi_run_cpu(uint32_t cpunumber)
 	allstats.cpusched++;
 	isi_fetch_time(&CRun);
 
-	if(ccpi->updev.t && ccpi->updev.t->c->RunCycles) {
-		ccpi->updev.t->c->RunCycles(ccpi->updev.t, CRun);
+	if(ccpi->updev.t) {
+		ccpi->updev.t->Run(CRun);
 	}
 	return acccycles;
 }
+void isi_register_server();
+void isi_register_redis();
+void cemei_register();
+void isi_register_netsync();
 
 int main(int argc, char**argv, char**envp)
 {
@@ -537,6 +550,11 @@ int main(int argc, char**argv, char**envp)
 	int premlimit = 0;
 
 	isi_init_contable();
+	isi_register_server();
+	isi_register(&isiSessionTTY_C);
+	isi_register_redis();
+	cemei_register();
+	isi_register_netsync();
 	isi_register_objects();
 	isi_objtable_init();
 	isi_init_sestable();
@@ -629,8 +647,7 @@ int main(int argc, char**argv, char**envp)
 			if(paddlimit < 20) paddlimit+=2;
 			for(k = 0; k < allses.count; k++) {
 				struct isiSession *ses = allses.table[k];
-				if(ses->LTick)
-					ses->LTick(ses, CRun);
+				ses->LTick(CRun);
 			}
 		}
 
@@ -658,8 +675,8 @@ int main(int argc, char**argv, char**envp)
 		}
 		for(k = 0; k < allses.count; k++) {
 			struct isiSession *ses = allses.table[k];
-			if(ses && ses->STick && (ses->cmdqstart != ses->cmdqend))
-				ses->STick(ses, CRun);
+			if(ses && (ses->cmdqstart != ses->cmdqend))
+				ses->STick(CRun);
 		}
 		if(i > 0) {
 			for(k = 0; k < allses.pcount; k++) {
@@ -673,7 +690,7 @@ int main(int argc, char**argv, char**envp)
 				if(ev & POLLNVAL) { etxt = "poll: FD invalid\n"; goto sessionerror; }
 				if(ev & POLLIN) {
 					if(ses->sfd == allses.ptable[k].fd) {
-						if(ses->Recv(ses, CRun))
+						if(ses->Recv(CRun))
 							goto sessionerror;
 					} else {
 						isilog(L_ERR, "netses: session ID error\n");
@@ -710,7 +727,12 @@ sessionerror:
 		}
 	}
 	while(allobj.count) {
-		isi_delete_object(allobj.table[0]);
+		size_t i;
+		for(i = 0; i < allobj.limit; i++) {
+			if(allobj.table[i].ptr) {
+				isi_delete_object(allobj.table[i].ptr);
+			}
+		}
 	}
 	if(rqrun) printf("\n\n\n\n");
 	return 0;

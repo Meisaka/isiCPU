@@ -46,31 +46,46 @@ ISIREFLECT(struct Disk_M35FD_svstate,
 	ISIR(Disk_M35FD_svstate, uint16_t, svbuf)
 )
 
-static int Disk_M35FD_Init(struct isiInfo *info);
-static struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
-static struct isiConstruct Disk_M35FD_Con = {
-	.objtype = ISIT_HARDWARE,
-	.name = "mack_35fd",
-	.desc = "Mackapar M35FD",
-	.Init = Disk_M35FD_Init,
-	.rvproto = &ISIREFNAME(struct Disk_M35FD_rvstate),
-	.svproto = &ISIREFNAME(struct Disk_M35FD_svstate),
-	.meta = &Disk_M35FD_Meta
+class Disk_M35FD : public isiInfo {
+public:
+	//virtual int Init(const uint8_t *, size_t);
+	//virtual int QuerySize(int, size_t *) const;
+	//virtual int Load();
+	//virtual int Unload();
+	virtual int Run(isi_time_t crun);
+	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	//virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	//virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	//virtual int Deattach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int Reset();
+protected:
+	void statechange(isi_time_t mtime);
+	int HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun);
 };
+
+static struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
+static isiClass<Disk_M35FD> Disk_M35FD_Con(
+	ISIT_HARDWARE, "mack_35fd", "Mackapar M35FD",
+	&ISIREFNAME(struct Disk_M35FD_rvstate),
+	&ISIREFNAME(struct Disk_M35FD_svstate),
+	NULL,
+	&Disk_M35FD_Meta);
+
 void Disk_M35FD_Register()
 {
 	isi_register(&Disk_M35FD_Con);
 }
 
-static int Disk_M35FD_QAttach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
+int Disk_M35FD::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
-	if(!dev || (point != ISIAT_UP && dev->id.objtype != ISIT_DISK)) return -1;
+	if(!dev || (point != ISIAT_UP && dev->otype != ISIT_DISK)) return -1;
 	return 0;
 }
 
-static int Disk_M35FD_Reset(struct isiInfo *info)
+int Disk_M35FD::Reset()
 {
-	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
 	dev->errcode = 0;
 	dev->iword = 0;
 	dev->oper = 0;
@@ -81,28 +96,28 @@ static int Disk_M35FD_Reset(struct isiInfo *info)
 	return 0;
 }
 
-static void Disk_M35FD_statechange(struct isiInfo *info, isi_time_t mtime)
+void Disk_M35FD::statechange(isi_time_t mtime)
 {
-	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
-	uint16_t iom[3];
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
+	uint32_t iom[3];
 	if(dev->iword) {
 		iom[0] = 2;
 		iom[1] = 0;
 		iom[2] = dev->iword;
-		isi_message_dev(info, ISIAT_UP, iom, 3, mtime);
+		isi_message_dev(this, ISIAT_UP, iom, 3, mtime);
 	}
 }
 
-static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, int len, isi_time_t crun)
+int Disk_M35FD::HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun)
 {
-	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
-	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
+	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)this->svstate;
 	uint16_t lerr;
 	uint16_t mc;
 	int i;
 	int r = 0;
 	struct isiInfo *media = 0;
-	isi_getindex_dev(info, 0, &media);
+	this->get_dev(0, &media);
 	switch(msg[0]) {
 	case 0:
 		if(media) {
@@ -115,7 +130,7 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			msg[1] = 0;
 		}
 		msg[2] = dev->errcode;
-		if(dev->errcode) Disk_M35FD_statechange(info, crun);
+		if(dev->errcode) this->statechange(crun);
 		dev->errcode = ERR_M35_NONE;
 		break;
 	case 1:
@@ -133,13 +148,13 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			isi_message_dev(info, 0, (uint16_t*)&dseek, 4, crun);
+			isi_message_dev(this, 0, (uint32_t*)&dseek, 3, crun);
 			dev->rwaddr = msg[4];
 			dev->oper = ST_M35_BUSYREAD;
 			msg[1] = 1;
-			Disk_M35FD_statechange(info, crun);
+			this->statechange(crun);
 		}
-		if(lerr != dev->errcode) Disk_M35FD_statechange(info, crun);
+		if(lerr != dev->errcode) this->statechange(crun);
 		break;
 	case 3:
 		msg[1] = 0;
@@ -154,51 +169,51 @@ static int Disk_M35FD_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *m
 			struct isiDiskSeekMsg dseek;
 			dseek.mcode = 0x0020;
 			dseek.block = dev->seeksector >> 2;
-			isi_message_dev(info, 0, (uint16_t*)&dseek, 4, crun);
+			isi_message_dev(this, 0, (uint32_t*)&dseek, 3, crun);
 			mc = dev->rwaddr = msg[4];
 			for(i = 0; i < 512; i++) {
-				dss->svbuf[i] = isi_hw_rdmem((isiram16)info->mem, mc);
+				dss->svbuf[i] = (uint16_t)this->mem->d_rd(mc);
 				mc++;
 			}
 			dev->oper = ST_M35_BUSYWRITE;
 			r = 512;
 			msg[1] = 1;
-			Disk_M35FD_statechange(info, crun);
+			this->statechange(crun);
 		}
-		if(lerr != dev->errcode) Disk_M35FD_statechange(info, crun);
+		if(lerr != dev->errcode) this->statechange(crun);
 		break;
 	}
 	return r;
 }
 
-static int Disk_M35FD_Tick(struct isiInfo *info, isi_time_t crun)
+int Disk_M35FD::Run(isi_time_t crun)
 {
-	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)info->rvstate;
-	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)info->svstate;
+	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
+	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)this->svstate;
 	struct isiInfo *media = 0;
-	if(!info->nrun) {
-		info->nrun = crun;
+	if(!this->nrun) {
+		this->nrun = crun;
 	}
-	while(isi_time_lt(&info->nrun, &crun)) {
+	while(isi_time_lt(&this->nrun, &crun)) {
 		if(dev->oper >= ST_M35_BUSY) {
-			if(isi_getindex_dev(info, 0, &media) || !media->c->MsgIn) {
+			if(this->get_dev(0, &media)) {
 				dev->errcode = ERR_M35_EJECT;
 				dev->oper = ST_M35_NO_MEDIA;
-				Disk_M35FD_statechange(info, info->nrun);
+				this->statechange(this->nrun);
 				continue;
 			}
 			if(dev->seektrack != dev->track) {
-				isi_add_time(&info->nrun, 2400000);
+				isi_add_time(&this->nrun, 2400000);
 				dev->track += (dev->seektrack < dev->track) ?-1:1;
 				dev->sector += 73;
 				dev->sector %= 18;
 			} else {
 				dev->sector++;
 				dev->sector %= 18;
-				isi_add_time(&info->nrun, 32573);
+				isi_add_time(&this->nrun, 32573);
 				uint32_t seekblock;
 				isi_disk_getindex(media, &seekblock);
-				if((dev->seeksector + 1) % 18 == dev->sector && seekblock == dev->seeksector >> 2) {
+				if((dev->seeksector + 1) % 18 == dev->sector && seekblock == (uint32_t)(dev->seeksector >> 2)) {
 					/* read success */
 					uint16_t *dr;
 					isi_disk_getblock(media, (void**)&dr);
@@ -207,7 +222,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, isi_time_t crun)
 						uint16_t mc;
 						mc = dev->rwaddr;
 						for(int i = 0; i < 512; i++) {
-							isi_hw_wrmem((isiram16)info->mem, mc, dr[i]);
+							this->mem->d_wr(mc, dr[i]);
 							mc++;
 						}
 					} else if(dev->oper == ST_M35_BUSYWRITE) {
@@ -216,22 +231,22 @@ static int Disk_M35FD_Tick(struct isiInfo *info, isi_time_t crun)
 						}
 					}
 					dev->oper = isi_disk_isreadonly(media)? ST_M35_IDLEP:ST_M35_IDLE;
-					Disk_M35FD_statechange(info, info->nrun);
+					this->statechange(this->nrun);
 				}
 			}
 		} else {
-			if(isi_getindex_dev(info, 0, &media)) {
+			if(this->get_dev(0, &media)) {
 				if(dev->oper != ST_M35_NO_MEDIA) {
 					dev->oper = ST_M35_NO_MEDIA;
-					Disk_M35FD_statechange(info, info->nrun);
+					this->statechange(this->nrun);
 				}
 			} else {
 				if(dev->oper == ST_M35_NO_MEDIA) {
 					dev->oper = isi_disk_isreadonly(media)? ST_M35_IDLEP:ST_M35_IDLE;
-					Disk_M35FD_statechange(info, info->nrun);
+					this->statechange(this->nrun);
 				}
 			}
-			isi_add_time(&info->nrun, 50000000);
+			isi_add_time(&this->nrun, 50000000);
 			dev->sector += 1535;
 			dev->sector %= 18;
 		}
@@ -239,7 +254,7 @@ static int Disk_M35FD_Tick(struct isiInfo *info, isi_time_t crun)
 	return 0;
 }
 
-static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
+int Disk_M35FD::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */
@@ -247,22 +262,9 @@ static int Disk_M35FD_MsgIn(struct isiInfo *info, struct isiInfo *src, int32_t l
 	case 1: return 0; /* HWQ executed */
 	case 2:
 		if(len < 10) return -1;
-		return Disk_M35FD_HWI(info, src, msg+2, len - 2, mtime); /* HWI executed */
+		return this->HWI(src, msg+2, len - 2, mtime); /* HWI executed */
 	default: break;
 	}
 	return 1;
-}
-
-static struct isiInfoCalls Disk_M35FDCalls = {
-	.Reset = Disk_M35FD_Reset, /* power on reset */
-	.MsgIn = Disk_M35FD_MsgIn, /* message from CPU or network */
-	.RunCycles = Disk_M35FD_Tick, /* scheduled runtime */
-	.QueryAttach = Disk_M35FD_QAttach
-};
-
-static int Disk_M35FD_Init(struct isiInfo *info)
-{
-	info->c = &Disk_M35FDCalls;
-	return 0;
 }
 

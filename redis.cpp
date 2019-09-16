@@ -15,9 +15,6 @@
 extern struct isiDevTable alldev;
 extern struct isiConTable allcon;
 extern struct isiObjTable allobj;
-int isi_create_object(int objtype, struct objtype **out);
-static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime);
-static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime);
 
 #define REDIS_NIL 0
 #define REDIS_STR 1
@@ -45,15 +42,25 @@ struct redis_osp {
 };
 
 struct redis_istate {
-	int parseheight;
-	int rqsent;
-	int rqstart;
+	size_t parseheight;
+	size_t rqsent;
+	size_t rqstart;
 	uint8_t * cptarget;
 	int64_t cplen;
 	int64_t zrlen;
 	struct redis_osp parsestat[10];
 };
 
+class isiSessionRedis : public isiSession {
+public:
+	virtual int Recv(isi_time_t mtime);
+	virtual int STick(isi_time_t mtime);
+};
+
+static isiClass<isiSessionRedis> isiSessionRedis_C(ISIT_SESSION_REDIS, "<isiSessionRedis>", "");
+void isi_register_redis() {
+	isi_register(&isiSessionRedis_C);
+}
 int redis_make_session(struct sockaddr *ripa, socklen_t rin)
 {
 	int fdn, i;
@@ -86,7 +93,7 @@ int redis_make_session(struct sockaddr *ripa, socklen_t rin)
 		return -1;
 	}
 	struct isiSession *ses;
-	if((i= isi_create_object(ISIT_SESSION, (struct objtype **)&ses))) {
+	if((i= isi_create_object(ISIT_SESSION_REDIS, NULL, (isiObject**)&ses))) {
 		return i;
 	}
 	ses->in = (uint8_t*)isi_alloc(8192);
@@ -98,8 +105,9 @@ int redis_make_session(struct sockaddr *ripa, socklen_t rin)
 	memset(ses->cmdq, 0, ses->cmdqlimit * sizeof(struct sescommandset));
 	ses->sfd = fdn;
 	ses->stype = 2;
-	ses->Recv = redis_handle_rd;
-	ses->STick = redis_handle_rq;
+	//ses->Recv = redis_handle_rd;
+	//ses->STick = redis_handle_rq;
+	// TODO redis session!
 	memcpy(&ses->r_addr, ripa, sizeof(struct sockaddr_in));
 	if(ses->r_addr.sin_family == AF_INET) {
 		union {
@@ -173,8 +181,8 @@ void isi_redis_test()
 {
 	uint32_t u = 0;
 	while(u < allobj.count) {
-		if(allobj.table[u] && allobj.table[u]->objtype == ISIT_SESSION) {
-			struct isiSession *ses = (struct isiSession *)allobj.table[u];
+		if(allobj.table[u].ptr && allobj.table[u].ptr->otype == ISIT_SESSION_REDIS) {
+			struct isiSession *ses = (struct isiSession *)allobj.table[u].ptr;
 			if(ses->stype == 2) {
 				struct sescommandset *ncmd;
 				if(session_add_cmdq(ses, &ncmd)) continue;
@@ -350,9 +358,9 @@ struct redis_persist_type {
 	{"nA"}
 };
 
-static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
+int isiSessionRedis::STick(isi_time_t mtime)
 {
-	struct redis_istate *istate = (struct redis_istate *)ses->istate;
+	struct redis_istate *istate = (struct redis_istate *)this->istate;
 	struct sescommandset *ncmd = 0;
 	const char *cvec;
 	char tuid[16];
@@ -361,24 +369,24 @@ static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 	int lo;
 	lim = 8192;
 	lo = 0;
-	session_get_cmdq(ses, &ncmd, 0);
+	session_get_cmdq(this, &ncmd, 0);
 	if(!ncmd) return 0;
-	if(istate->rqstart != ses->cmdqstart) {
-		istate->rqstart = ses->cmdqstart;
+	if(istate->rqstart != this->cmdqstart) {
+		istate->rqstart = this->cmdqstart;
 		istate->rqsent = 0;
 	}
 	if(!istate->rqsent) {
 		switch(ncmd->cmd) {
 		case 0:
-			session_get_cmdq(ses, NULL, 1); /* cancel */
+			session_get_cmdq(this, NULL, 1); /* cancel */
 			return 0;
 		case ISIC_TESTLIST:
 			cvec = "*2\r\n$4\r\nKEYS\r\n$1\r\n*\r\n";
-			write(ses->sfd, cvec, strlen(cvec));
+			write(this->sfd, cvec, strlen(cvec));
 			break;
 		case ISIC_TESTDATA:
 			cvec = "*2\r\n$3\r\nGET\r\n$6\r\ntest:3\r\n";
-			write(ses->sfd, cvec, strlen(cvec));
+			write(this->sfd, cvec, strlen(cvec));
 			break;
 		case ISIC_LOADOBJECT:
 		{
@@ -390,15 +398,15 @@ static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 			isi_text_enc(tuid, 11, &pld->uuid, 8);
 			isilog(L_DEBUG, "net-redis: requesting load for %s%s:%s:*\n",
 					redis_prefix, cname, tuid);
-			l = snprintf((char*)ses->out, lim, "*4\r\n$4\r\nMGET\r\n");
+			l = snprintf((char*)this->out, lim, "*4\r\n$4\r\nMGET\r\n");
 			lo += l;
 			for(i = 0; i < 3; i++) {
-				l = snprintf((char*)ses->out+lo, lim-lo, "$%ld\r\n%s%s:%s:%s\r\n",
+				l = snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:%s\r\n",
 						strlen(redis_ptype[i].text)+1+nlen,
 						redis_prefix, cname, tuid, redis_ptype[i].text);
 				lo += l;
 			}
-			write(ses->sfd, ses->out, lo);
+			write(this->sfd, this->out, lo);
 		}
 			break;
 		case ISIC_DISKWRITE:
@@ -408,24 +416,24 @@ static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 			size_t nlen;
 			uint64_t fullindex = 0;
 			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
-			isi_get_name(disk->id.objtype, &cname);
+			isi_get_name(disk->otype, &cname);
 			nlen = strlen(cname) + 12 + redis_pfxlen;
-			isi_text_enc(tuid, 11, &disk->id.uuid, 8);
+			isi_text_enc(tuid, 11, &disk->uuid, 8);
 			isilog(L_DEBUG, "net-redis: writing disk data %s%s:%s:blk\n",
 					redis_prefix, cname, tuid);
-			lo += snprintf((char*)ses->out, lim, "*4\r\n$8\r\nSETRANGE\r\n");
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
+			lo += snprintf((char*)this->out, lim, "*4\r\n$8\r\nSETRANGE\r\n");
+			lo += snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
 					4+nlen,	redis_prefix, cname, tuid);
 			fullindex = ncmd->tid * 4096ull;
 			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$4096\r\n");
+			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			lo += snprintf((char*)this->out+lo, lim-lo, "$4096\r\n");
 			void *blkdat;
 			isi_disk_getblock(disk, &blkdat);
-			memcpy(ses->out+lo, blkdat, 4096);
+			memcpy(this->out+lo, blkdat, 4096);
 			lo += 4096;
-			lo += snprintf((char*)ses->out+lo, lim-lo, "\r\n");
-			write(ses->sfd, ses->out, lo);
+			lo += snprintf((char*)this->out+lo, lim-lo, "\r\n");
+			write(this->sfd, this->out, lo);
 		}
 			break;
 		case ISIC_DISKLOAD:
@@ -434,21 +442,21 @@ static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 			size_t nlen;
 			uint64_t fullindex = 0;
 			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
-			isi_get_name(disk->id.objtype, &cname);
+			isi_get_name(disk->otype, &cname);
 			nlen = strlen(cname) + 12 + redis_pfxlen;
-			isi_text_enc(tuid, 11, &disk->id.uuid, 8);
+			isi_text_enc(tuid, 11, &disk->uuid, 8);
 			isilog(L_DEBUG, "net-redis: requesting disk data %s%s:%s:blk\n",
 					redis_prefix, cname, tuid);
-			lo += snprintf((char*)ses->out, lim, "*4\r\n$8\r\nGETRANGE\r\n");
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
+			lo += snprintf((char*)this->out, lim, "*4\r\n$8\r\nGETRANGE\r\n");
+			lo += snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
 					4+nlen,	redis_prefix, cname, tuid);
 			fullindex = ncmd->param * 4096ull;
 			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
 			fullindex += 4095u;
 			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)ses->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
-			write(ses->sfd, ses->out, lo);
+			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			write(this->sfd, this->out, lo);
 		}
 			break;
 		}
@@ -457,23 +465,23 @@ static int redis_handle_rq(struct isiSession *ses, isi_time_t mtime)
 	return 0;
 }
 
-static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
+int isiSessionRedis::Recv(isi_time_t mtime)
 {
 	int i;
-	struct redis_istate *istate = (struct redis_istate *)ses->istate;
-	i = redis_fetch_data(ses);
+	struct redis_istate *istate = (struct redis_istate *)this->istate;
+	i = redis_fetch_data(this);
 	if(i < 0) return i;
 	if(i > 0) return 0;
-	isilog(L_DEBUG, "net-redis: got message l=%d\n", ses->rcv);
-	uint8_t *inv = ses->in;
+	isilog(L_DEBUG, "net-redis: got message l=%d\n", this->rcv);
+	uint8_t *inv = this->in;
 	struct sescommandset *ncmd = 0;
-	session_get_cmdq(ses, &ncmd, 0);
+	session_get_cmdq(this, &ncmd, 0);
 	if(!ncmd) {
 		isilog(L_DEBUG, "net-redis: no message handle command\n");
-		fprintf(stderr, "net-redis: %s\n", ses->in);
+		fprintf(stderr, "net-redis: %s\n", this->in);
 	}
 	int cmdnox = 0;
-	while(istate->parseheight || inv < ses->in + ses->rcv) {
+	while(istate->parseheight || inv < this->in + this->rcv) {
 		uint8_t *outstr;
 		struct redis_osp *osp;
 		int fetch = 0;
@@ -520,9 +528,9 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 			} else continue;
 		} else if(fetch) {
 			osp = istate->parsestat + istate->parseheight++;
-			if(redis_get_element(ses, &inv, osp, &outstr)) {
+			if(redis_get_element(this, &inv, osp, &outstr)) {
 				isilog(L_ERR, "net-redis: parse error\n");
-				ses->rcv = 0;
+				this->rcv = 0;
 				return 0;
 			}
 			if(osp->etype == REDIS_ERR) {
@@ -533,7 +541,7 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 		if(etype > REDIS_TYPEMAX) {
 			switch(osp->etype) {
 			case REDIS_DATACOPY:
-				i = redis_load_data(ses, &inv, istate);
+				i = redis_load_data(this, &inv, istate);
 				if(!osp->len) {
 					if(!istate->cplen && istate->zrlen) {
 						memset(istate->cptarget, 0, istate->zrlen);
@@ -543,7 +551,7 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 				}
 				break;
 			case REDIS_DATASKIP:
-				i = redis_skip_data(ses, &inv, &osp->len);
+				i = redis_skip_data(this, &inv, &osp->len);
 				break;
 			}
 		}
@@ -588,7 +596,7 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 						if(eitr == 2) {
 							linfo->nvsize = osp->len;
 							linfo->nvstate = isi_alloc(linfo->nvsize);
-							redis_cmd_load_data(istate, linfo->nvstate, linfo->nvsize);
+							redis_cmd_load_data(istate, (uint8_t*)linfo->nvstate, linfo->nvsize);
 						}
 					}
 					ncmd->param++;
@@ -606,11 +614,9 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 						isi_delete_object(pld->obj);
 					} else {
 						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
-						linfo->id.objtype = pld->ncid;
-						linfo->id.uuid = pld->uuid;
-						if(linfo->meta->Init) {
-							linfo->meta->Init(linfo);
-						}
+						linfo->otype = pld->ncid;
+						linfo->uuid = pld->uuid;
+						linfo->Load();
 						isilog(L_DEBUG, "net-redis: loadobject success\n");
 						session_async_end(ncmd, 0);
 					}
@@ -622,12 +628,12 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 				isilog(L_DEBUG, "net-redis: diskload\n");
 				if(etype == REDIS_DATA) {
 					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
-					void *blkdat;
-					isi_disk_getblock(disk, &blkdat);
+					uint8_t *blkdat;
+					isi_disk_getblock(disk, (void**)&blkdat);
 					redis_cmd_load_data(istate, blkdat, 4096);
 				} else if(etype == REDIS_CMDEXIT) {
 					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
-					uint16_t dm[4] = {0x22, ncmd->param, ncmd->param >> 16, 0};
+					uint32_t dm[4] = {0x22, ncmd->param, 0};
 					isi_message_dev(disk, -1, dm, 3, mtime);
 				}
 				break;
@@ -648,14 +654,14 @@ static int redis_handle_rd(struct isiSession *ses, isi_time_t mtime)
 		}
 		if(etype == REDIS_CMDEXIT) {
 			ncmd = 0;
-			session_get_cmdq(ses, NULL, 1); /* remove a command normally */
-			session_get_cmdq(ses, &ncmd, 0);
+			session_get_cmdq(this, NULL, 1); /* remove a command normally */
+			session_get_cmdq(this, &ncmd, 0);
 		}
 	}
-	ses->rcv -= (inv - ses->in);
-	if(ses->rcv) {
-		memmove(ses->in, inv, ses->rcv);
-		inv = ses->in;
+	this->rcv -= (inv - this->in);
+	if(this->rcv) {
+		memmove(this->in, inv, this->rcv);
+		inv = this->in;
 	}
 	return 0;
 }

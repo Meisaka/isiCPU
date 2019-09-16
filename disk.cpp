@@ -1,5 +1,7 @@
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "isitypes.h"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,7 +34,6 @@ ISIREFLECT(struct disk_svstate,
 
 int isi_read_disk_file(struct isiDisk *disk, uint32_t blockseek);
 int isi_write_disk_file(struct isiDisk *disk);
-int isi_create_object(int objtype, struct objtype **out);
 
 int isi_text_enc(char *text, int limit, void const *vv, int len)
 {
@@ -137,7 +138,7 @@ int isi_scan_dir()
 	if(!dbuf) { isilogerr("malloc"); closedir(d); return -1; }
 
 	while(!readdir_r(d, dbuf, &de) && de) {
-		dot = strchr(de->d_name, '.');
+		dot = strrchr(de->d_name, '.');
 		if(dot) {
 			if(!strncmp(dot+1, "idi", 3) || !strncmp(dot+1, "bin", 3)) {
 				isilog(L_DEBUG, "ENT-%s ", de->d_name);
@@ -160,8 +161,7 @@ int isi_scan_dir()
 int isi_test_disk(struct isiDisk *disk)
 {
 	uint32_t *a, *b;
-	struct isiInfo *idisk = (struct isiInfo *)disk;
-	struct disk_svstate *ds = (struct disk_svstate*)idisk->svstate;
+	struct disk_svstate *ds = (struct disk_svstate*)disk->svstate;
 	a = (uint32_t*)ds->block;
 	b = (uint32_t*)ds->dblock;
 	for(int i = sizeof(ds->block) / sizeof(uint32_t); i--;) {
@@ -220,7 +220,7 @@ int isi_find_bin(uint64_t diskid, char **nameout)
 static int isi_read_disk(struct isiInfo *info, uint32_t blkseek)
 {
 	struct isiDisk *disk = (struct isiDisk *)info;
-	if(info->id.uuid) {
+	if(info->uuid) {
 		persist_disk(info, blkseek, 0, 1);
 	} else if(disk->fd != -1) {
 		return isi_read_disk_file(disk, blkseek);
@@ -231,7 +231,7 @@ static int isi_read_disk(struct isiInfo *info, uint32_t blkseek)
 static int isi_writeread_disk(struct isiInfo *info, uint32_t blkseek)
 {
 	struct isiDisk *disk = (struct isiDisk *)info;
-	if(info->id.uuid) {
+	if(info->uuid) {
 		struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
 		persist_disk(info, blkseek, sv->index, 3);
 	} else if(disk->fd != -1) {
@@ -244,7 +244,7 @@ static int isi_writeread_disk(struct isiInfo *info, uint32_t blkseek)
 static int isi_write_disk(struct isiInfo *info)
 {
 	struct isiDisk *disk = (struct isiDisk *)info;
-	if(info->id.uuid) {
+	if(info->uuid) {
 		struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
 		persist_disk(info, 0, sv->index, 2);
 	} else if(disk->fd != -1) {
@@ -253,25 +253,23 @@ static int isi_write_disk(struct isiInfo *info)
 	return -1;
 }
 
-static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
+int isiDisk::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
-	if(info->id.objtype != ISIT_DISK) return -1;
-	struct isiDisk *disk = (struct isiDisk *)info;
-	struct disk_rvstate *rv = (struct disk_rvstate *)info->rvstate;
-	struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
+	struct disk_rvstate *rv = (struct disk_rvstate *)this->rvstate;
+	struct disk_svstate *sv = (struct disk_svstate *)this->svstate;
 	struct isiDiskSeekMsg *dsm = (struct isiDiskSeekMsg *)msg;
 	switch(msg[0]) {
 	case ISE_DISKSEEK:
 		if(dsm->block != sv->index) {
-			if(!rv->wrprotect && isi_test_disk(disk)) {
-				isi_writeread_disk(info, dsm->block);
+			if(!rv->wrprotect && isi_test_disk(this)) {
+				isi_writeread_disk(this, dsm->block);
 			} else {
-				isi_read_disk(info, dsm->block);
+				isi_read_disk(this, dsm->block);
 			}
 		}
 		return 0;
 	case ISE_DISKWPRST:
-		if(!rv->wrprotect && isi_test_disk(disk)) isi_write_disk(info);
+		if(!rv->wrprotect && isi_test_disk(this)) isi_write_disk(this);
 		break;
 	case ISE_DISKRESET:
 		sv->index = (msg[2] << 16u) | msg[1];
@@ -283,20 +281,18 @@ static int isi_disk_msgin(struct isiInfo *info, struct isiInfo *src, int32_t lsi
 	return -1;
 }
 
-static int isi_delete_disk(struct isiInfo *info)
+int isiDisk::Unload()
 {
-	if(info->id.objtype != ISIT_DISK) return -1;
-	struct isiDisk *disk = (struct isiDisk*)info;
-	struct disk_rvstate *rv = (struct disk_rvstate *)info->rvstate;
-	if(!rv->wrprotect && isi_test_disk(disk)) isi_write_disk(info);
-	close(disk->fd);
+	struct disk_rvstate *rv = (struct disk_rvstate *)this->rvstate;
+	if(!rv->wrprotect && isi_test_disk(this)) isi_write_disk(this);
+	close(this->fd);
 	return 0;
 }
 
 int isi_disk_isreadonly(struct isiInfo *disk)
 {
 	if(!disk) return -1;
-	if(disk->id.objtype != ISIT_DISK) {
+	if(disk->otype != ISIT_DISK) {
 		return -1;
 	}
 	struct disk_rvstate *rv = (struct disk_rvstate *)disk->rvstate;
@@ -306,7 +302,7 @@ int isi_disk_isreadonly(struct isiInfo *disk)
 int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 {
 	if(!disk || !blockaddr) return -1;
-	if(disk->id.objtype != ISIT_DISK) {
+	if(disk->otype != ISIT_DISK) {
 		*blockaddr = 0;
 		return -1;
 	}
@@ -318,7 +314,7 @@ int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex)
 {
 	if(!disk || !blockindex) return -1;
-	if(disk->id.objtype != ISIT_DISK) {
+	if(disk->otype != ISIT_DISK) {
 		*blockindex = 0;
 		return -1;
 	}
@@ -327,22 +323,17 @@ int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex)
 	return 0;
 }
 
-static struct isiInfoCalls diskCalls = {
-	.Delete = isi_delete_disk,
-	.MsgIn = isi_disk_msgin
-};
-
-static int disk_init(struct isiInfo *idisk)
+isiDisk::isiDisk()
 {
-	struct isiDisk *mdisk;
-	mdisk = (struct isiDisk *)idisk;
-	mdisk->fd = -1;
-	idisk->c = &diskCalls;
-	if(idisk->id.uuid) isi_read_disk(idisk, 0);
+	this->fd = -1;
+}
+int isiDisk::Load()
+{
+	if(this->uuid) isi_read_disk(this, 0);
 	return 0;
 }
 
-static int disk_new(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
+int isiDisk::Init(const uint8_t *cfg, size_t lcfg)
 {
 	char dskname[32];
 	char *ldisk;
@@ -351,7 +342,6 @@ static int disk_new(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 	uint64_t diskid = 0;
 	if(isi_fetch_parameter(cfg, lcfg, 1, &diskid, sizeof(uint64_t))) {
 	}
-	if(!idisk) return -1;
 	if(usefs) {
 		if(diskid) {
 			isi_text_enc(dskname, 11, &diskid, 8);
@@ -372,23 +362,15 @@ static int disk_new(struct isiInfo *idisk, const uint8_t *cfg, size_t lcfg)
 	} else if(diskid) {
 		return ISIERR_NOTALLOWED;
 	}
-	struct isiDisk *mdisk;
-	mdisk = (struct isiDisk *)idisk;
-	mdisk->fd = fd;
-	if(usefs) isi_read_disk(idisk, 0);
+	this->fd = fd;
+	if(usefs) isi_read_disk(this, 0);
 	return 0;
 }
 static char Disk_Meta[] = {0,0,0,0,0,0,0,0,0,0,0,0};
-static struct isiConstruct Disk_Con = {
-	.objtype = ISIT_DISK,
-	.name = "disk",
-	.desc = "Disk media",
-	.Init = disk_init,
-	.New = disk_new,
-	.rvproto = &ISIREFNAME(struct disk_rvstate),
-	.svproto = &ISIREFNAME(struct disk_svstate),
-	.meta = &Disk_Meta
-};
+static isiClass<isiDisk> Disk_Con(ISIT_DISK, "disk", "Disk media", 
+		&ISIREFNAME(struct disk_rvstate),
+		&ISIREFNAME(struct disk_svstate),
+		NULL, &Disk_Meta);
 void Disk_Register()
 {
 	isi_register(&Disk_Con);

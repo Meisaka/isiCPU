@@ -11,8 +11,6 @@
 #define DCPUMODE_EXTINT 8
 
 struct DCPU {
-	uint16_t msg;
-	uint16_t dai;
 	uint16_t R[8];
 	uint16_t PC;
 	uint16_t SP;
@@ -21,8 +19,8 @@ struct DCPU {
 
 	uint64_t cycl;
 	int MODE;
-	isiram16 memptr;
-	uint16_t hwcount;
+	memory64x16* memptr;
+	uint32_t hwcount;
 	/* Interupt queue */
 	int IQC;
 	uint16_t IQU[256];
@@ -36,8 +34,8 @@ ISIREFLECT(struct DCPU,
 	ISIR(DCPU, uint16_t, IA)
 	ISIR(DCPU, uint64_t, cycl)
 	ISIR(DCPU, int, MODE)
-	ISIR(DCPU, isiram16, memptr)
-	ISIR(DCPU, uint16_t, hwcount)
+	ISIR(DCPU, memory64x16*, memptr)
+	ISIR(DCPU, uint32_t, hwcount)
 	ISIR(DCPU, int, IQC)
 )
 
@@ -74,75 +72,58 @@ static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
 	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
 
-static inline void DCPU_reref(int, uint16_t, struct DCPU *, isiram16);
-static inline void DCPU_rerefB(int, uint16_t, struct DCPU *, isiram16);
-static inline uint16_t DCPU_deref(int, struct DCPU *, isiram16);
-static inline uint16_t DCPU_derefB(int, struct DCPU *, isiram16);
+static inline void DCPU_reref(int, uint16_t, struct DCPU *, isiRam*);
+static inline void DCPU_rerefB(int, uint16_t, struct DCPU *, isiRam*);
+static inline uint16_t DCPU_deref(int, struct DCPU *, isiRam*);
+static inline uint16_t DCPU_derefB(int, struct DCPU *, isiRam*);
 static int DCPU_setonfire(struct DCPU *);
 static inline void DCPU_skipref(int, struct DCPU *);
-static int DCPU_reset(struct isiInfo *);
-static int DCPU_interrupt(struct isiInfo *, struct isiInfo *, int32_t lsindex, uint16_t *, int, isi_time_t);
-static int DCPU_run(struct isiInfo *, isi_time_t);
-static int DCPU_init(struct isiInfo *info);
 
-static struct isiConstruct DCPU_Con = {
-	.objtype = ISIT_DCPU,
-	.name = "dcpu",
-	.desc = "DCPU-16 1.7",
-	.Init = DCPU_init,
-	.rvproto = &ISIREFNAME(struct DCPU)
+class DCPU16 : public isiCPUInfo {
+public:
+	DCPU16() {
+		isi_setrate(this, 100000); // 100kHz
+	}
+	virtual int Run(isi_time_t crun);
+	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int Reset();
 };
+static isiClass<DCPU16> DCPU_Con(
+	ISIT_CPU, "dcpu", "DCPU-16 1.7",
+	&ISIREFNAME(struct DCPU), NULL, NULL, NULL);
 
-void DCPU_Register()
+int DCPU16::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
-	isi_register(&DCPU_Con);
-}
-
-static int DCPU_QueryAttach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
-	if(!info || !dev) return ISIERR_INVALIDPARAM;
-	if(dev->id.objtype == ISIT_MEM6416) return 0;
+	if(!dev) return ISIERR_INVALIDPARAM;
+	if(dev->otype == ISIT_MEM16) return 0;
 	if(point == ISIAT_UP) return 0;
 	return ISIERR_NOCOMPAT;
 }
-static int DCPU_Attach(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
+int DCPU16::Attach(int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
-	if(!info || !dev) return ISIERR_INVALIDPARAM;
+	if(!dev) return ISIERR_INVALIDPARAM;
 	return 0;
 }
-static int DCPU_Attached(struct isiInfo *info, int32_t point, struct isiInfo *dev, int32_t devpoint)
+int DCPU16::Attached(int32_t point, struct isiInfo *dev, int32_t devpoint)
 {
-	if(!info || !dev) return ISIERR_INVALIDPARAM;
-	return 0;
-}
-
-static struct isiInfoCalls DCPUCalls = {
-	.RunCycles = DCPU_run,
-	.Reset = DCPU_reset,
-	.MsgIn = DCPU_interrupt,
-	.QueryAttach = DCPU_QueryAttach,
-	.Attach = DCPU_Attach,
-	.Attached = DCPU_Attached
-};
-
-static int DCPU_init(struct isiInfo *info)
-{
-	isi_setrate((struct isiCPUInfo *)info, 100000); // 100kHz
-	info->c = &DCPUCalls;
+	if(!dev) return ISIERR_INVALIDPARAM;
 	return 0;
 }
 
-static int DCPU_reset(struct isiInfo *info)
+int DCPU16::Reset()
 {
-	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
-	pr->memptr = (isiram16)info->mem;
+	struct DCPU *pr; pr = (struct DCPU*)this->rvstate;
+	pr->memptr = (memory64x16*)this->mem;
 	int i;
 	for(i = 0; i < 8; i++)
 	{
 		pr->R[i] = 0;
 	}
 	if(pr->memptr)
-		for(i = 0; i < 0x10000; i++) isi_cpu_wrmem(pr->memptr, (uint16_t)i, 0);
+		for(i = 0; i < 0x10000; i++) pr->memptr->d_wr((uint16_t)i, 0);
 	else
 		return -1;
 	pr->PC = 0;
@@ -152,9 +133,11 @@ static int DCPU_reset(struct isiInfo *info)
 	pr->MODE = 0;
 	pr->cycl = 0;
 	pr->IQC = 0;
-	pr->msg = ISE_RESET;
-	if(!isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun)) {
-		pr->hwcount = pr->dai;
+	uint32_t iom[10] = {
+		ISE_RESET, 0,
+	};
+	if(!isi_message_dev(this, ISIAT_UP, iom, 10, this->nrun)) {
+		pr->hwcount = iom[1];
 	}
 	return 0;
 }
@@ -225,7 +208,7 @@ void showdisasm_dcpu(const struct isiInfo *info)
 
 void showdiag_dcpu(const struct isiInfo* info, int fmt)
 {
-	const struct isiCPUInfo *l_info = (const struct isiCPUInfo *)info;
+	const DCPU16 *l_info = (const DCPU16 *)info;
 	const struct DCPU * cpu = (const struct DCPU*)info->rvstate;
 	const char *diagt;
 	diagt = fmt ? DIAG_L2 : DIAG_L4;
@@ -237,9 +220,9 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 	}
 }
 
-static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
+int DCPU16::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
-	struct DCPU *pr; pr = (struct DCPU*)info->rvstate;
+	struct DCPU *pr; pr = (struct DCPU*)this->rvstate;
 	if(msg[0] == ISE_SREG) {
 		for(int i = 1; i < 8 && i < len; i++) {
 			pr->R[i - 1] = msg[i];
@@ -261,7 +244,7 @@ static int DCPU_interrupt(struct isiInfo *info, struct isiInfo *src, int32_t lsi
 }
 
 // Write referenced B operand
-static inline void DCPU_reref(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
+static inline void DCPU_reref(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
 {
 	switch(p & 0x1f) {
 	case 0x00:
@@ -279,7 +262,7 @@ static inline void DCPU_reref(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: isi_cpu_wrmem(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: ram->x_wr(pr->R[p & 0x7], v); return;
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -287,14 +270,14 @@ static inline void DCPU_reref(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x18: isi_cpu_wrmem(ram, --(pr->SP), v); return;
-	case 0x19: isi_cpu_wrmem(ram, pr->SP, v); return;
-	case 0x1a: pr->cycl++; isi_cpu_wrmem(ram, pr->SP + isi_cpu_rdmem(ram,pr->PC++), v); return;
+	case 0x17: pr->cycl++; ram->x_wr(ram->x_rd(pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: ram->x_wr(--(pr->SP), v); return;
+	case 0x19: ram->x_wr(pr->SP, v); return;
+	case 0x1a: pr->cycl++; ram->x_wr(pr->SP + ram->x_rd(pr->PC++), v); return;
 	case 0x1b: pr->SP = v; return;
 	case 0x1c: pr->PC = v; return;
 	case 0x1d: pr->EX = v; return;
-	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram,pr->PC++), v); return;
+	case 0x1e: pr->cycl++; ram->x_wr(ram->x_rd(pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
 		isilog(L_DEBUG, "DCPU: Bad write: %x\n", p);
@@ -304,7 +287,7 @@ static inline void DCPU_reref(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 }
 
 // re-Write referenced B operand
-static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
+static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
 {
 	switch(p & 0x1f) {
 	case 0x00:
@@ -322,7 +305,7 @@ static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: isi_cpu_wrmem(ram, pr->R[p & 0x7], v); return;
+	case 0x0f: ram->x_wr(pr->R[p & 0x7], v); return;
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -330,14 +313,14 @@ static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7], v); return;
-	case 0x18: isi_cpu_wrmem(ram, pr->SP, v); return;
-	case 0x19: isi_cpu_wrmem(ram, pr->SP, v); return;
-	case 0x1a: pr->cycl++; isi_cpu_wrmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC++), v); return;
+	case 0x17: pr->cycl++; ram->x_wr(ram->x_rd(pr->PC++) + pr->R[p & 0x7], v); return;
+	case 0x18: ram->x_wr(pr->SP, v); return;
+	case 0x19: ram->x_wr(pr->SP, v); return;
+	case 0x1a: pr->cycl++; ram->x_wr(pr->SP + ram->x_rd(pr->PC++), v); return;
 	case 0x1b: pr->SP = v; return;
 	case 0x1c: pr->PC = v; return;
 	case 0x1d: pr->EX = v; return;
-	case 0x1e: pr->cycl++; isi_cpu_wrmem(ram, isi_cpu_rdmem(ram, pr->PC++), v); return;
+	case 0x1e: pr->cycl++; ram->x_wr(ram->x_rd(pr->PC++), v); return;
 	case 0x1f: pr->cycl++; pr->PC++; /* Fail silently */ return;
 	default:
 		isilog(L_DEBUG, "DCPU: Bad write: %x\n", p);
@@ -348,7 +331,7 @@ static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU* pr, isiram16 ram)
 
 
 // Dereference an A operand for ops
-static inline uint16_t DCPU_deref(int p, struct DCPU* pr, isiram16 ram)
+static inline uint16_t DCPU_deref(int p, struct DCPU *pr, isiRam *ram)
 {
 	switch(p) {
 	case 0x00:
@@ -366,7 +349,7 @@ static inline uint16_t DCPU_deref(int p, struct DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: return isi_cpu_rdmem(ram, pr->R[p & 0x7]);
+	case 0x0f: return ram->x_rd(pr->R[p & 0x7]);
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -374,22 +357,22 @@ static inline uint16_t DCPU_deref(int p, struct DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC++) + pr->R[p & 0x7]);
-	case 0x18: return isi_cpu_rdmem(ram, pr->SP++);
-	case 0x19: return isi_cpu_rdmem(ram, pr->SP);
-	case 0x1a: pr->cycl++; return isi_cpu_rdmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC++));
+	case 0x17: pr->cycl++; return ram->x_rd(ram->x_rd(pr->PC++) + pr->R[p & 0x7]);
+	case 0x18: return ram->x_rd(pr->SP++);
+	case 0x19: return ram->x_rd(pr->SP);
+	case 0x1a: pr->cycl++; return ram->x_rd(pr->SP + ram->x_rd(pr->PC++));
 	case 0x1b: return pr->SP;
 	case 0x1c: return pr->PC;
 	case 0x1d: return pr->EX;
-	case 0x1e: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC++));
-	case 0x1f: pr->cycl++; return isi_cpu_rdmem(ram, pr->PC++);
+	case 0x1e: pr->cycl++; return ram->x_rd(ram->x_rd(pr->PC++));
+	case 0x1f: pr->cycl++; return ram->x_rd(pr->PC++);
 	default:
 		return (uint16_t)(p - 0x21); /* literals */
 	}
 }
 
 // Dereference a B operand for R/W ops:
-static inline uint16_t DCPU_derefB(int p, struct DCPU* pr, isiram16 ram)
+static inline uint16_t DCPU_derefB(int p, struct DCPU *pr, isiRam *ram)
 {
 	switch(p) {
 	case 0x00:
@@ -407,7 +390,7 @@ static inline uint16_t DCPU_derefB(int p, struct DCPU* pr, isiram16 ram)
 	case 0x0c:
 	case 0x0d:
 	case 0x0e:
-	case 0x0f: return isi_cpu_rdmem(ram, pr->R[p & 0x7]);
+	case 0x0f: return ram->x_rd(pr->R[p & 0x7]);
 	case 0x10:
 	case 0x11:
 	case 0x12:
@@ -415,15 +398,15 @@ static inline uint16_t DCPU_derefB(int p, struct DCPU* pr, isiram16 ram)
 	case 0x14:
 	case 0x15:
 	case 0x16:
-	case 0x17: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC) + pr->R[p & 0x7]);
-	case 0x18: return isi_cpu_rdmem(ram, --(pr->SP));
-	case 0x19: return isi_cpu_rdmem(ram, pr->SP);
-	case 0x1a: pr->cycl++; return isi_cpu_rdmem(ram, pr->SP + isi_cpu_rdmem(ram, pr->PC));
+	case 0x17: pr->cycl++; return ram->x_rd(ram->x_rd(pr->PC) + pr->R[p & 0x7]);
+	case 0x18: return ram->x_rd(--(pr->SP));
+	case 0x19: return ram->x_rd(pr->SP);
+	case 0x1a: pr->cycl++; return ram->x_rd(pr->SP + ram->x_rd(pr->PC));
 	case 0x1b: return pr->SP;
 	case 0x1c: return pr->PC;
 	case 0x1d: return pr->EX;
-	case 0x1e: pr->cycl++; return isi_cpu_rdmem(ram, isi_cpu_rdmem(ram, pr->PC));
-	case 0x1f: pr->cycl++; return isi_cpu_rdmem(ram, pr->PC);
+	case 0x1e: pr->cycl++; return ram->x_rd(ram->x_rd(pr->PC));
+	case 0x1f: pr->cycl++; return ram->x_rd(pr->PC);
 	default:
 		return (uint16_t)(p - 0x21); /* literals */
 	}
@@ -470,12 +453,12 @@ static const int DCPU_dwtbl[] =
 	0, 0, 1, 1, 0, 0, 0, 0
 };
 
-static int DCPU_run(struct isiInfo * info, isi_time_t crun)
+int DCPU16::Run(isi_time_t crun)
 {
-	struct isiCPUInfo *l_info = (struct isiCPUInfo*)info;
-	struct DCPU *pr = (struct DCPU*)info->rvstate;
-	isiram16 ram = pr->memptr;
+	struct DCPU *pr = (struct DCPU*)this->rvstate;
+	memory64x16 *ram = pr->memptr;
 	size_t cycl = 0;
+	uint32_t iom[10];
 	int op;
 	int oa;
 	int ob;
@@ -491,36 +474,36 @@ static int DCPU_run(struct isiInfo * info, isi_time_t crun)
 	} alu2;
 	
 	uintptr_t ccq = 0;
-	if(l_info->ctl & ISICTL_STEP) {
-		if(l_info->ctl & ISICTL_STEPE) {
+	if(this->ctl & ISICTL_STEP) {
+		if(this->ctl & ISICTL_STEPE) {
 			ccq = 1;
-			l_info->ctl &= ~ISICTL_STEPE;
+			this->ctl &= ~ISICTL_STEPE;
 		} else {
-			info->nrun = crun;
-			isi_add_time(&info->nrun, l_info->runrate);
+			this->nrun = crun;
+			isi_add_time(&this->nrun, this->runrate);
 		}
 	} else {
-		ccq = l_info->rate;
+		ccq = this->rate;
 	}
-	while(ccq && isi_time_lt(&info->nrun, &crun)) {
+	while(ccq && isi_time_lt(&this->nrun, &crun)) {
 
 	if(pr->MODE == BURNING) {
 		cycl += 3;
 	}
-	if(l_info->ctl & ISICTL_DEBUG) {
-		if(!(l_info->ctl & ISICTL_STEP) && !(l_info->ctl & ISICTL_STEPE) && isi_cpu_isbrk(ram, pr->PC)) {
-			l_info->ctl |= ISICTL_STEP | ISICTL_TRACE;
+	if(this->ctl & ISICTL_DEBUG) {
+		if(!(this->ctl & ISICTL_STEP) && !(this->ctl & ISICTL_STEPE) && ram->isbrk(pr->PC)) {
+			this->ctl |= ISICTL_STEP | ISICTL_TRACE;
 			isilog(L_DEBUG, "dcpu: break point at %04x\n", pr->PC);
-			showdiag_dcpu(info, 1);
+			showdiag_dcpu(this, 1);
 			break;
 		}
-		l_info->ctl &= ~ISICTL_STEPE;
+		this->ctl &= ~ISICTL_STEPE;
 	}
 
 	if((pr->MODE & DCPUMODE_EXTINT)) {
 		pr->MODE ^= DCPUMODE_EXTINT;
 	} else {
-		op = isi_cpu_rdmem(ram, pr->PC++);
+		op = ram->x_rd(pr->PC++);
 		oa = (op >> 10) & 0x003f;
 		ob = (op >> 5) & 0x001f;
 		op &= 0x001f;
@@ -588,9 +571,19 @@ static int DCPU_run(struct isiInfo * info, isi_time_t crun)
 				break;
 			case SOP_HWQ:
 				alu1.u = DCPU_deref(oa, pr, ram);
-				pr->msg = ISE_QINT;
-				pr->dai = alu1.u;
-				if(isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun) == 0) {
+				iom[0] = ISE_QINT;
+				iom[1] = alu1.u;
+				iom[2] = pr->R[0];
+				iom[3] = pr->R[1];
+				iom[4] = pr->R[2];
+				iom[5] = pr->R[3];
+				iom[6] = pr->R[4];
+				if(isi_message_dev(this, ISIAT_UP, iom, 10, this->nrun) == 0) {
+					pr->R[0] = iom[2];
+					pr->R[1] = iom[3];
+					pr->R[2] = iom[4];
+					pr->R[3] = iom[5];
+					pr->R[4] = iom[6];
 				} else {
 					pr->R[0] = 0;
 					pr->R[1] = 0;
@@ -602,15 +595,39 @@ static int DCPU_run(struct isiInfo * info, isi_time_t crun)
 			case SOP_HWI:
 				alu1.u = DCPU_deref(oa, pr, ram);
 				//pr->MODE |= DCPUMODE_EXTINT;
-				pr->msg = ISE_XINT;
-				pr->dai = alu1.u;
-				if(0 != (op = isi_message_dev(info, ISIAT_UP, &pr->msg, 10, info->nrun))) {
+				iom[0] = ISE_XINT;
+				iom[1] = alu1.u;
+				iom[2] = pr->R[0];
+				iom[3] = pr->R[1];
+				iom[4] = pr->R[2];
+				iom[5] = pr->R[3];
+				iom[6] = pr->R[4];
+				iom[7] = pr->R[5];
+				iom[8] = pr->R[6];
+				iom[9] = pr->R[7];
+				if(0 != (op = isi_message_dev(this, ISIAT_UP, iom, 10, this->nrun))) {
 					if(op > 0) {
 						//pr->wcycl = op;
 						pr->MODE |= DCPUMODE_EXTINT;
+						pr->R[0] = iom[2];
+						pr->R[1] = iom[3];
+						pr->R[2] = iom[4];
+						pr->R[3] = iom[5];
+						pr->R[4] = iom[6];
+						pr->R[5] = iom[7];
+						pr->R[6] = iom[8];
+						pr->R[7] = iom[9];
 						goto ecpu;
 					}
 				}
+				pr->R[0] = iom[2];
+				pr->R[1] = iom[3];
+				pr->R[2] = iom[4];
+				pr->R[3] = iom[5];
+				pr->R[4] = iom[6];
+				pr->R[5] = iom[7];
+				pr->R[6] = iom[8];
+				pr->R[7] = iom[9];
 				break;
 			default:
 				break;
@@ -834,15 +851,15 @@ ecpu:
 	cycl += pr->cycl;
 	pr->cycl = 0;
 	if(!cycl) cycl = 1;
-	if(l_info->ctl & ISICTL_DEBUG) {
-		if(l_info->ctl & ISICTL_RUNFOR) {
-			if(l_info->rcycl > cycl) {
-				l_info->rcycl -= cycl;
+	if(this->ctl & ISICTL_DEBUG) {
+		if(this->ctl & ISICTL_RUNFOR) {
+			if(this->rcycl > cycl) {
+				this->rcycl -= cycl;
 			} else {
-				l_info->ctl &= ~ISICTL_RUNFOR;
-				l_info->ctl |= ISICTL_STEP | ISICTL_TRACE;
+				this->ctl &= ~ISICTL_RUNFOR;
+				this->ctl |= ISICTL_STEP | ISICTL_TRACE;
 				ccq = 0;
-				showdiag_dcpu(info, 1);
+				showdiag_dcpu(this, 1);
 				break;
 			}
 		}
@@ -852,8 +869,8 @@ ecpu:
 	} else {
 		ccq -= cycl; // each op uses cycles
 	}
-	l_info->cycl += cycl;
-	isi_add_time(&info->nrun, cycl * l_info->runrate);
+	this->cycl += cycl;
+	isi_add_time(&this->nrun, cycl * this->runrate);
 	cycl = 0;
 	} // while ccq
 	return 0;
@@ -864,5 +881,10 @@ static int DCPU_setonfire(struct DCPU * pr)
 	pr->MODE = BURNING;
 	isilog(L_WARN, "DCPU: set on fire!\n");
 	return HUGE_FIREBALL;
+}
+
+void DCPU_Register()
+{
+	isi_register(&DCPU_Con);
 }
 

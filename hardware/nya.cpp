@@ -58,77 +58,78 @@ ISIREFLECT(struct Nya_LEM_rv,
 	ISIR(Nya_LEM_rv, unsigned short, version)
 )
 
-static int Nya_LEM_Init(struct isiInfo *info);
+class Nya_LEM : public isiInfo {
+public:
+	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int Reset();
+
+	int HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun);
+};
 static struct isidcpudev const Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
-static struct isiConstruct Nya_LEM_Con = {
-	.objtype = ISIT_HARDWARE,
-	.name = "nya_lem",
-	.desc = "Nya LEM 1802",
-	.Init = Nya_LEM_Init,
-	.rvproto = &ISIREFNAME(struct Nya_LEM_rv),
-	.meta = &Nya_LEM_Meta
-};
+static isiClass<Nya_LEM> Nya_LEM_Con(
+	ISIT_HARDWARE, "nya_lem", "Nya LEM 1802",
+	&ISIREFNAME(struct Nya_LEM_rv),
+	NULL, NULL,
+	&Nya_LEM_Meta
+);
 static struct isidcpudev const Nya_LEM_MetaTC = {0x1802,0x734df615,MF_NYAE};
-static struct isiConstruct Nya_LEM_ConTC = {
-	.objtype = ISIT_HARDWARE,
-	.name = "tc_nya_lem",
-	.desc = "Nya LEM 1802 [TC]",
-	.Init = Nya_LEM_Init,
-	.rvproto = &ISIREFNAME(struct Nya_LEM_rv),
-	.meta = &Nya_LEM_MetaTC
-};
+static isiClass<Nya_LEM> Nya_LEM_ConTC(
+	ISIT_HARDWARE, "tc_nya_lem", "Nya LEM 1802 [TC]",
+	&ISIREFNAME(struct Nya_LEM_rv),
+	NULL, NULL,
+	&Nya_LEM_MetaTC
+);
 void Nya_LEM_Register()
 {
 	isi_register(&Nya_LEM_Con);
 	isi_register(&Nya_LEM_ConTC);
 }
 
-static int Nya_LEM_Reset(struct isiInfo *info)
+int Nya_LEM::Reset()
 {
 	struct Nya_LEM_rv* dsp;
-	dsp = (struct Nya_LEM_rv*)info->rvstate;
+	dsp = (struct Nya_LEM_rv*)this->rvstate;
 	if(!dsp) return -1;
 	dsp->dspmem = 0;
 	dsp->fontmem = 0;
 	dsp->version = 0x1802;
-	isi_resync_dev(&info->id);
+	isi_resync_dev(this);
 	return 0;
 }
 
-static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg, isi_time_t crun)
+int Nya_LEM::HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun)
 {
 	struct Nya_LEM_rv* dsp;
 	struct memory64x16 *mem;
 	unsigned short dma;
 	int i;
-	if(!info) return -1;
-	dsp = (struct Nya_LEM_rv*)info->rvstate;
-	mem = (struct memory64x16*)info->mem;
+	dsp = (struct Nya_LEM_rv*)this->rvstate;
+	mem = (struct memory64x16*)this->mem;
 	switch(msg[0]) {
 	case 0:
 		if(dsp->dspmem == msg[1]) break;
 		dsp->dspmem = msg[1];
 		if(dsp->dspmem) {
-			isi_add_devmemsync(&info->id, &mem->id, 50000000);
-			isi_set_devmemsync_extent(&info->id, &mem->id, 0, dsp->dspmem, 384);
+			isi_add_devmemsync(this, mem, 50000000);
+			isi_set_devmemsync_extent(this, mem, 0, dsp->dspmem, 384);
 		}
 		break;
 	case 1: // Map Font
 		if(dsp->fontmem == msg[1]) break;
 		dsp->fontmem = msg[1];
 		isilog(L_DEBUG, "NYALEM: Font set to %04x \n", dsp->fontmem);
-		isi_set_devmemsync_extent(&info->id, &mem->id, 1, dsp->fontmem, 256);
+		isi_set_devmemsync_extent(this, mem, 1, dsp->fontmem, 256);
 		break;
 	case 2: // Map Palette
 		if(dsp->palmem == msg[1]) break;
 		dsp->palmem = msg[1];
 		isilog(L_DEBUG, "NYALEM: Palette set to %04x \n", dsp->palmem);
-		isi_set_devmemsync_extent(&info->id, &mem->id, 2, dsp->palmem, 16);
+		isi_set_devmemsync_extent(this, mem, 2, dsp->palmem, 16);
 		break;
 	case 3: // Set border
 		if(dsp->border == msg[1]) break;
 		dsp->border = msg[1];
-		isi_resync_dev(&info->id);
+		isi_resync_dev(this);
 		break;
 	case 4: // Mem Dump Font
 		dma = msg[1];
@@ -144,26 +145,15 @@ static int Nya_LEM_HWI(struct isiInfo *info, struct isiInfo *host, uint16_t *msg
 	return 0;
 }
 
-static int Nya_LEM_MsgIn(struct isiInfo *info, struct isiInfo *host, int32_t lsindex, uint16_t *msg, int len, isi_time_t mtime)
+int Nya_LEM::MsgIn(struct isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	if(len < 10) return -1;
 	switch(msg[0]) {
-	case ISE_RESET: return Nya_LEM_Reset(info);
+	case ISE_RESET: return this->Reset();
 	case ISE_QINT: return 0;
-	case ISE_XINT: return Nya_LEM_HWI(info, host, msg+2, mtime);
+	case ISE_XINT: return this->HWI(host, msg+2, mtime);
 	default: break;
 	}
-	return 0;
-}
-
-static struct isiInfoCalls Nya_LEMCalls = {
-	.MsgIn = Nya_LEM_MsgIn,
-	.Reset = Nya_LEM_Reset
-};
-
-static int Nya_LEM_Init(struct isiInfo *info)
-{
-	info->c = &Nya_LEMCalls;
 	return 0;
 }
 
