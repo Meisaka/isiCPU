@@ -35,22 +35,20 @@ ISIREFLECT(struct KaiHIC_svstate,
 
 class KaiHIC : public isiInfo {
 	virtual int Init(const uint8_t *, size_t);
-	//virtual int QuerySize(int, size_t *) const;
 	virtual int Load();
 	//virtual int Unload();
 	virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
-	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Deattach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Attach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Deattach(int32_t topoint, isiInfo *dev, int32_t frompoint);
 	virtual int Reset();
-	int HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t mtime);
-	int HWI(struct isiInfo *src, uint32_t *msg, isi_time_t mtime);
+	int HWQ(isiInfo *src, uint32_t *msg, isi_time_t mtime);
+	int HWI(isiInfo *src, uint32_t *msg, isi_time_t mtime);
 };
 struct isidcpudev KaiHIC_Meta = {0x0448,0xE0239088,MF_KAICOMM}; /* 32 port HIC / KaiComm */
-struct isiClass<KaiHIC> KaiHIC32_Con(
-	ISIT_HARDWARE, "kaihic32", "KaiComm HIC 32 Port",
+isiClass<KaiHIC> KaiHIC32_Con(
+	ISIT_HARDWARE, "tcm_kai_hic32", "KaiComm HIC 32 Port",
 	&ISIREFNAME(struct KaiHIC_rvstate),
 	&ISIREFNAME(struct KaiHIC_svstate),
 	NULL,
@@ -61,7 +59,7 @@ void KaiHIC_Register()
 	isi_register(&KaiHIC32_Con);
 }
 
-int KaiHIC::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
+int KaiHIC::QueryAttach(int32_t point, isiInfo *dev, int32_t devpoint)
 {
 	if(!dev) return -1;
 	if(!isi_is_infodev(dev)) return -1;
@@ -84,12 +82,12 @@ int KaiHIC::Reset()
 	return 0;
 }
 
-int KaiHIC::HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t mtime)
+int KaiHIC::HWQ(isiInfo *src, uint32_t *msg, isi_time_t mtime)
 {
 	return 0;
 }
 
-int KaiHIC::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t mtime)
+int KaiHIC::HWI(isiInfo *src, uint32_t *msg, isi_time_t mtime)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)this->rvstate;
 	struct KaiHIC_svstate *devv = (struct KaiHIC_svstate*)this->svstate;
@@ -211,7 +209,7 @@ int KaiHIC::Run(isi_time_t crun)
 	return 0;
 }
 
-int KaiHIC::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int KaiHIC::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	struct KaiHIC_rvstate *dev = (struct KaiHIC_rvstate*)this->rvstate;
 	switch(msg[0]) { /* message type, msg[1] is device index */

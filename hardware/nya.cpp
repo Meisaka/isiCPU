@@ -1,6 +1,5 @@
 
 #include "../dcpuhw.h"
-#include <unistd.h>
 
 // TODO Not quite "Offical"
 static unsigned short nya_deffont[] = {
@@ -60,21 +59,21 @@ ISIREFLECT(struct Nya_LEM_rv,
 
 class Nya_LEM : public isiInfo {
 public:
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
 
-	int HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun);
+	int HWI(isiInfo *host, uint32_t *msg, isi_time_t crun);
 };
 static struct isidcpudev const Nya_LEM_Meta = {0x1802,0x7349f615,MF_NYAE};
 static isiClass<Nya_LEM> Nya_LEM_Con(
-	ISIT_HARDWARE, "nya_lem", "Nya LEM 1802",
+	ISIT_HARDWARE, "txc_nya_lem", "Nya LEM 1802",
 	&ISIREFNAME(struct Nya_LEM_rv),
 	NULL, NULL,
 	&Nya_LEM_Meta
 );
 static struct isidcpudev const Nya_LEM_MetaTC = {0x1802,0x734df615,MF_NYAE};
 static isiClass<Nya_LEM> Nya_LEM_ConTC(
-	ISIT_HARDWARE, "tc_nya_lem", "Nya LEM 1802 [TC]",
+	ISIT_HARDWARE, "tcm_nya_lem", "Nya LEM 1802 [TC]",
 	&ISIREFNAME(struct Nya_LEM_rv),
 	NULL, NULL,
 	&Nya_LEM_MetaTC
@@ -97,14 +96,14 @@ int Nya_LEM::Reset()
 	return 0;
 }
 
-int Nya_LEM::HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun)
+int Nya_LEM::HWI(isiInfo *host, uint32_t *msg, isi_time_t crun)
 {
 	struct Nya_LEM_rv* dsp;
-	struct memory64x16 *mem;
+	isiMemory *mem;
 	unsigned short dma;
 	int i;
 	dsp = (struct Nya_LEM_rv*)this->rvstate;
-	mem = (struct memory64x16*)this->mem;
+	mem = this->mem;
 	switch(msg[0]) {
 	case 0:
 		if(dsp->dspmem == msg[1]) break;
@@ -133,11 +132,11 @@ int Nya_LEM::HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun)
 		break;
 	case 4: // Mem Dump Font
 		dma = msg[1];
-		for(i = 0; i < 256; i++) mem->ram[dma++] = nya_deffont[i];
+		for(i = 0; i < 256; i++) mem->d_wr(dma++, nya_deffont[i]);
 		return 256;
 	case 5: // Mem Dump Pal
 		dma = msg[1];
-		for(i = 0; i < 16; i++) mem->ram[dma++] = nya_defpal[i];
+		for(i = 0; i < 16; i++) mem->d_wr(dma++, nya_defpal[i]);
 		return 16;
 	default:
 		break;
@@ -145,7 +144,7 @@ int Nya_LEM::HWI(struct isiInfo *host, uint32_t *msg, isi_time_t crun)
 	return 0;
 }
 
-int Nya_LEM::MsgIn(struct isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int Nya_LEM::MsgIn(isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	if(len < 10) return -1;
 	switch(msg[0]) {

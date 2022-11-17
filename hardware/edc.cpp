@@ -2,7 +2,11 @@
 #include "../dcpuhw.h"
 
 #ifndef DEBUG_PRINTF
+#ifdef _MSC_VER
+#define DEBUG_PRINTF(...) fprintf(stderr, __VA_ARGS__)
+#else
 #define DEBUG_PRINTF(A...) fprintf(stderr, A)
+#endif
 #endif
 
 // controls actual RAM addressing
@@ -41,7 +45,7 @@ int EDC_Init(struct EDC_Dev *dsp, unsigned w, unsigned h)
 	return 0;
 }
 
-int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
+int EDC_Query(isiInfo *info, isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct EDC_Dev *dsp;
 	if(!info) return -1;
@@ -57,7 +61,7 @@ int EDC_Query(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time
 	return 0;
 }
 
-int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
+int EDC_HWI(isiInfo *info, isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	struct EDC_Dev *dsp;
 	int i;
@@ -139,7 +143,7 @@ int EDC_HWI(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t
 	return 0;
 }
 
-int EDC_MsgIn(struct isiInfo *info, struct isiInfo *src, uint16_t *msg, isi_time_t mtime)
+int EDC_MsgIn(isiInfo *info, isiInfo *src, uint16_t *msg, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case 0: break;

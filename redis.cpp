@@ -1,20 +1,16 @@
 
 #include <fcntl.h>
-#include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <poll.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
 #include "isitypes.h"
 #include "netmsg.h"
 #include <stdio.h>
+#include <string>
+#include <vector>
+#include "platform.h"
 
-extern struct isiDevTable alldev;
-extern struct isiConTable allcon;
-extern struct isiObjTable allobj;
+extern std::vector<isiObjSlot> allobj;
+extern std::vector<isiSession*> allses;
 
 #define REDIS_NIL 0
 #define REDIS_STR 1
@@ -30,8 +26,7 @@ extern struct isiObjTable allobj;
 #define REDIS_DATACOPY 8
 #define REDIS_DATASKIP 9
 
-char *redis_prefix = 0;
-int redis_pfxlen = 0;
+std::string redis_prefix;
 
 struct redis_osp {
 	int etype;
@@ -55,73 +50,75 @@ class isiSessionRedis : public isiSession {
 public:
 	virtual int Recv(isi_time_t mtime);
 	virtual int STick(isi_time_t mtime);
+private:
+	int fetch_data();
+	int skip_data(uint8_t **rdpoint, int64_t *len);
+	int load_data(uint8_t **rdpoint, redis_istate *istate);
+	int get_element(uint8_t **rdpoint, redis_osp *osp, uint8_t **strout);
 };
 
 static isiClass<isiSessionRedis> isiSessionRedis_C(ISIT_SESSION_REDIS, "<isiSessionRedis>", "");
 void isi_register_redis() {
 	isi_register(&isiSessionRedis_C);
 }
-int redis_make_session(struct sockaddr *ripa, socklen_t rin)
-{
-	int fdn, i;
-	if(!redis_prefix) {
-		redis_prefix = strdup("");
-		redis_pfxlen = 0;
-	}
-	fdn = socket(ripa->sa_family, SOCK_STREAM, 0);
-	if(fdn < 0) {
-		isilogerr("socket");
+
+int redis_make_session(struct sockaddr *ripa, socklen_t rin) {
+	fdesc_t fdn;
+	int i;
+	fdn = platform_socket(ripa->sa_family, SOCK_STREAM, 0);
+	if(fdn == fdesc_empty) {
+		isilogneterr("socket");
 		return -1;
 	}
 	i = 1;
 	setsockopt(fdn, SOL_SOCKET, SO_REUSEADDR, &i, sizeof(int));
 	i = 1;
-	if( setsockopt(fdn, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(int)) < 0 ) {
-		isilogerr("set'opt");
+	if(setsockopt(fdn, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(int)) < 0) {
+		isilogneterr("set'opt");
 		close(fdn);
 		return -1;
 	}
-	if( fcntl(fdn, F_SETFL, O_NONBLOCK) < 0 ) {
-		isilogerr("fcntl");
+	if(set_nonblock(fdn) < 0) {
+		isilogneterr("fcntl");
 		close(fdn);
 		return -1;
 	}
 	i = connect(fdn, ripa, rin);
-	if( i < 0 && errno != EINPROGRESS ) {
-		isilogerr("connect");
+	if(i < 0 && errno != EINPROGRESS) {
+		isilogneterr("connect");
 		close(fdn);
 		return -1;
 	}
-	struct isiSession *ses;
+	isiSession *ses;
 	if((i= isi_create_object(ISIT_SESSION_REDIS, NULL, (isiObject**)&ses))) {
 		return i;
 	}
-	ses->in = (uint8_t*)isi_alloc(8192);
-	ses->out = (uint8_t*)isi_alloc(8192);
-	ses->istate = isi_alloc(sizeof(struct redis_istate));
+	ses->in = make_msg();
+	ses->istate = isi_calloc(sizeof(struct redis_istate));
 	ses->cmdqlimit = 1024;
 	ses->cmdqend = 0;
-	ses->cmdq = (struct sescommandset *)isi_alloc(ses->cmdqlimit * sizeof(struct sescommandset));
-	memset(ses->cmdq, 0, ses->cmdqlimit * sizeof(struct sescommandset));
+	ses->cmdq = (isiCommand *)isi_calloc(ses->cmdqlimit * sizeof(isiCommand));
+	memset(ses->cmdq, 0, ses->cmdqlimit * sizeof(isiCommand));
 	ses->sfd = fdn;
 	ses->stype = 2;
 	//ses->Recv = redis_handle_rd;
 	//ses->STick = redis_handle_rq;
 	// TODO redis session!
-	memcpy(&ses->r_addr, ripa, sizeof(struct sockaddr_in));
-	if(ses->r_addr.sin_family == AF_INET) {
+	ses->r_addr = (net_endpoint*)isi_calloc(sizeof(struct sockaddr_in));
+	memcpy(ses->r_addr, ripa, sizeof(struct sockaddr_in));
+	if(((sockaddr_in*)ses->r_addr)->sin_family == AF_INET) {
 		union {
 			uint8_t a[4];
 			uint32_t la;
 		} ipa;
-		ipa.la = ses->r_addr.sin_addr.s_addr;
+		ipa.la = ((sockaddr_in*)ses->r_addr)->sin_addr.s_addr;
 		isilog(L_INFO, "net-server: new IP Redis session to: %d.%d.%d.%d:%d\n"
-			, ipa.a[0], ipa.a[1], ipa.a[2], ipa.a[3], ntohs(ses->r_addr.sin_port)
+			, ipa.a[0], ipa.a[1], ipa.a[2], ipa.a[3], ntohs(((sockaddr_in*)ses->r_addr)->sin_port)
 		);
 	} else {
 		isilog(L_INFO, "net-server: new Redis session made\n");
 	}
-	isi_pushses(ses);
+	allses.push_back(ses);
 	return 0;
 }
 
@@ -133,7 +130,7 @@ int redis_make_session_lu(const char *addr)
 	const char * aend = 0;
 	const char * ac = 0;
 	char * saddr = 0;
-	char * sport = 0;
+	std::string sport("6379");
 	int brack = 0;
 	int r = -1;
 	memset(&hint, 0, sizeof(struct addrinfo));
@@ -152,94 +149,87 @@ int redis_make_session_lu(const char *addr)
 		isilog(L_ERR, "net-param: Connect Invalid input: [%s]\n", addr);
 		return -1;
 	}
-	saddr = (char*)isi_alloc((aend-addr)+1);
+	saddr = (char*)isi_calloc((aend-addr)+1);
 	memcpy(saddr, addr, (aend-addr));
 	saddr[aend-addr] = 0;
-	if(!aport) {
-		sport = strdup("6379");
-	} else {
-		sport = strdup(aport);
+	if(aport) {
+		sport = aport;
 	}
 	hint.ai_family = AF_UNSPEC;
 	hint.ai_protocol = 0;
 	hint.ai_socktype = SOCK_STREAM;
-	getaddrinfo(saddr, sport, &hint, &ritr);
+	getaddrinfo(saddr, sport.c_str(), &hint, &ritr);
 	if(ritr) {
 		size_t la;
 		la = ritr->ai_addrlen;
 		r = redis_make_session(ritr->ai_addr, la);
 	} else {
-		isilog(L_ERR, "net-param: Resolve failed on: [%s]:%s\n", saddr, sport);
+		isilog(L_ERR, "net-param: Resolve failed on: [%s]:%s\n", saddr, sport.c_str());
 	}
 	freeaddrinfo(ritr);
 	free(saddr);
-	free(sport);
 	return r;
 }
 
-void isi_redis_test()
-{
-	uint32_t u = 0;
-	while(u < allobj.count) {
-		if(allobj.table[u].ptr && allobj.table[u].ptr->otype == ISIT_SESSION_REDIS) {
-			struct isiSession *ses = (struct isiSession *)allobj.table[u].ptr;
+void isi_redis_test() {
+	for(auto &obj : allobj) {
+		if(obj.ptr && obj.ptr->otype == ISIT_SESSION_REDIS) {
+			isiSession *ses = (isiSession *)obj.ptr;
 			if(ses->stype == 2) {
-				struct sescommandset *ncmd;
-				if(session_add_cmdq(ses, &ncmd)) continue;
+				isiCommand *ncmd;
+				if(ses->add_cmdq(&ncmd)) continue;
 				ncmd->cmd = 1;
-				if(session_add_cmdq(ses, &ncmd)) continue;
+				if(ses->add_cmdq(&ncmd)) continue;
 				ncmd->cmd = 2;
 			}
 		}
-		u++;
 	}
 }
 
-static int redis_fetch_data(struct isiSession *ses)
-{
+int isiSessionRedis::fetch_data() {
 	int i;
-	int l;
-	l = 1524;
 	errno = 0;
 	i = -1;
+	if(!this->in) {
+		this->in = make_msg();
+	}
+	uint32_t limit = in->r_limit;
 	while(i < 0) {
-		if(!(l - ses->rcv)) return 0;
-		fprintf(stderr, "redis recv: %d - ", l-ses->rcv);
-		i = recv(ses->sfd, ses->in+ses->rcv, l-ses->rcv, MSG_WAITALL);
+		if(!(limit - recv_index)) return 0;
+		fprintf(stderr, "redis recv: %d - ", limit - recv_index);
+		i = recv(sfd, (char*)(in->u8_head) + recv_index, limit - recv_index, MSG_WAITALL);
 		fprintf(stderr, "%d\n", i);
 		if(i < 0) {
-			isilogerr("socket read");
+			isilogneterr("socket read");
 			if(errno == EAGAIN || errno == EWOULDBLOCK) return 1;
 			return -1;
 		}
 	}
-	ses->rcv += i;
-	ses->in[ses->rcv] = 0;
+	recv_index += i;
+	in->u8_head[recv_index] = 0;
 	return 0;
 }
 
-int redis_skip_data(struct isiSession *ses, uint8_t **rdpoint, int64_t *len)
-{
-	uint8_t *rdend = ses->in + ses->rcv;
+int isiSessionRedis::skip_data(uint8_t **rdpoint, int64_t *len) {
+	uint8_t *rdend = in->u8_head + recv_index;
 	while(*len > 0 && *rdpoint < rdend) {
 		if(*rdpoint + *len <= rdend) {
 			*rdpoint += *len;
 			*len = 0;
 		} else if(*len > 0) {
-			*len -= ses->rcv - (*rdpoint - ses->in);
-			*rdpoint = ses->in;
-			ses->rcv = 0;
-			int r = redis_fetch_data(ses);
+			*len -= recv_index - (*rdpoint - in->u8_head);
+			*rdpoint = in->u8_head;
+			recv_index = 0;
+			int r = fetch_data();;
 			if(r) return r;
-			rdend = ses->in + ses->rcv;
+			rdend = in->u8_head + recv_index;
 		}
 	}
 	return 0;
 }
 
-static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, struct redis_istate *istate)
-{
-	uint8_t *rdend = ses->in + ses->rcv;
+int isiSessionRedis::load_data(uint8_t **rdpoint, redis_istate *istate) {
+	uint8_t *rdend = in->u8_head + recv_index;
 	fprintf(stderr, "data:");
 	struct redis_osp *osp = istate->parsestat + (istate->parseheight - 1);
 	while(osp->len > 0 && *rdpoint < rdend) {
@@ -252,11 +242,11 @@ static int redis_load_data(struct isiSession *ses, uint8_t **rdpoint, struct red
 		else fprintf(stderr, " [%02x]", **rdpoint);
 		++*rdpoint; --osp->len;
 		if(osp->len > 0 && *rdpoint == rdend) {
-			*rdpoint = ses->in;
-			ses->rcv = 0;
-			int r = redis_fetch_data(ses);
+			*rdpoint = in->u8_head;
+			recv_index = 0;
+			int r = fetch_data();
 			if(r) return r;
-			rdend = ses->in + ses->rcv;
+			rdend = in->u8_head + recv_index;
 		}
 	}
 	putc(10, stderr);
@@ -278,14 +268,13 @@ static void redis_cmd_load_data(struct redis_istate *ist, uint8_t *target, int64
 	}
 }
 
-static int redis_get_element(struct isiSession *ses, uint8_t **rdpoint, struct redis_osp *osp, uint8_t **strout)
-{
+int isiSessionRedis::get_element(uint8_t **rdpoint, struct redis_osp *osp, uint8_t **strout) {
 	int64_t val = 0;
 	int eoa = 0;
 	int ss = 0;
 	int nxm = -1;
 	uint8_t *strst = 0;
-	uint8_t *rdend = ses->in + ses->rcv;
+	uint8_t *rdend = in->u8_head + recv_index;
 	if(!osp) return -1;
 	memset(osp, 0, sizeof(struct redis_osp));
 	while(!eoa && *rdpoint < rdend) {
@@ -338,11 +327,11 @@ static int redis_get_element(struct isiSession *ses, uint8_t **rdpoint, struct r
 		}
 		++*rdpoint;
 		if(!eoa && *rdpoint >= rdend) {
-			*rdpoint -= ses->rcv;
-			ses->rcv = 0;
-			int r = redis_fetch_data(ses);
+			*rdpoint -= recv_index;
+			recv_index = 0;
+			int r = fetch_data();
 			if(r) return r;
-			rdend = ses->in + ses->rcv;
+			rdend = in->u8_head + recv_index;
 		}
 	}
 	osp->len = val;
@@ -361,15 +350,14 @@ struct redis_persist_type {
 int isiSessionRedis::STick(isi_time_t mtime)
 {
 	struct redis_istate *istate = (struct redis_istate *)this->istate;
-	struct sescommandset *ncmd = 0;
+	isiCommand *ncmd = 0;
 	const char *cvec;
 	char tuid[16];
 	int l, i;
-	int lim;
-	int lo;
-	lim = 8192;
-	lo = 0;
-	session_get_cmdq(this, &ncmd, 0);
+	isiMsgRef out = make_msg();
+	uint32_t limit = out->r_limit;
+	uint32_t wr_offset = 0;
+	get_cmdq(&ncmd, 0);
 	if(!ncmd) return 0;
 	if(istate->rqstart != this->cmdqstart) {
 		istate->rqstart = this->cmdqstart;
@@ -378,7 +366,7 @@ int isiSessionRedis::STick(isi_time_t mtime)
 	if(!istate->rqsent) {
 		switch(ncmd->cmd) {
 		case 0:
-			session_get_cmdq(this, NULL, 1); /* cancel */
+			get_cmdq(NULL, 1); /* cancel */
 			return 0;
 		case ISIC_TESTLIST:
 			cvec = "*2\r\n$4\r\nKEYS\r\n$1\r\n*\r\n";
@@ -391,72 +379,72 @@ int isiSessionRedis::STick(isi_time_t mtime)
 		case ISIC_LOADOBJECT:
 		{
 			struct isiPLoad *pld = (struct isiPLoad *)ncmd->rdata;
-			const char *cname = 0;
+			std::string_view cname;
 			size_t nlen;
 			isi_get_name(pld->ncid, &cname);
-			nlen = strlen(cname) + 12 + redis_pfxlen;
+			nlen = cname.size() + 12 + redis_prefix.size();
 			isi_text_enc(tuid, 11, &pld->uuid, 8);
 			isilog(L_DEBUG, "net-redis: requesting load for %s%s:%s:*\n",
-					redis_prefix, cname, tuid);
-			l = snprintf((char*)this->out, lim, "*4\r\n$4\r\nMGET\r\n");
-			lo += l;
+					redis_prefix.c_str(), cname.data(), tuid);
+			l = snprintf((char*)out->u8_head, limit, "*4\r\n$4\r\nMGET\r\n");
+			wr_offset += l;
 			for(i = 0; i < 3; i++) {
-				l = snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:%s\r\n",
+				l = snprintf((char*)out->u8_head + wr_offset, limit - wr_offset, "$%zd\r\n%s%s:%s:%s\r\n",
 						strlen(redis_ptype[i].text)+1+nlen,
-						redis_prefix, cname, tuid, redis_ptype[i].text);
-				lo += l;
+						redis_prefix.c_str(), cname.data(), tuid, redis_ptype[i].text);
+				wr_offset += l;
 			}
-			write(this->sfd, this->out, lo);
+			write(this->sfd, (char*)out->u8_head, wr_offset);
 		}
 			break;
 		case ISIC_DISKWRITE:
 		case ISIC_DISKWRLD:
 		{
-			const char *cname = 0;
+			std::string_view cname;
 			size_t nlen;
 			uint64_t fullindex = 0;
-			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+			isiInfo *disk = (isiInfo *)ncmd->cptr;
 			isi_get_name(disk->otype, &cname);
-			nlen = strlen(cname) + 12 + redis_pfxlen;
+			nlen = cname.size() + 12 + redis_prefix.size();
 			isi_text_enc(tuid, 11, &disk->uuid, 8);
 			isilog(L_DEBUG, "net-redis: writing disk data %s%s:%s:blk\n",
-					redis_prefix, cname, tuid);
-			lo += snprintf((char*)this->out, lim, "*4\r\n$8\r\nSETRANGE\r\n");
-			lo += snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
-					4+nlen,	redis_prefix, cname, tuid);
+					redis_prefix, cname.data(), tuid);
+			wr_offset += snprintf((char*)out->u8_head, limit, "*4\r\n$8\r\nSETRANGE\r\n");
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit - wr_offset, "$%zd\r\n%s%s:%s:blk\r\n",
+					4+nlen,	redis_prefix.c_str(), cname.data(), tuid);
 			fullindex = ncmd->tid * 4096ull;
-			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
-			lo += snprintf((char*)this->out+lo, lim-lo, "$4096\r\n");
+			l = snprintf(tuid, 16, "%llu", fullindex);
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit - wr_offset, "$%d\r\n%s\r\n", l, tuid);
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit - wr_offset, "$4096\r\n");
 			void *blkdat;
 			isi_disk_getblock(disk, &blkdat);
-			memcpy(this->out+lo, blkdat, 4096);
-			lo += 4096;
-			lo += snprintf((char*)this->out+lo, lim-lo, "\r\n");
-			write(this->sfd, this->out, lo);
+			memcpy(out->u8_head + wr_offset, blkdat, 4096);
+			wr_offset += 4096;
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit-wr_offset, "\r\n");
+			write(this->sfd, (char*)out->u8_head, wr_offset);
 		}
 			break;
 		case ISIC_DISKLOAD:
 		{
-			const char *cname = 0;
+			std::string_view cname;
 			size_t nlen;
 			uint64_t fullindex = 0;
-			struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+			isiInfo *disk = (isiInfo *)ncmd->cptr;
 			isi_get_name(disk->otype, &cname);
-			nlen = strlen(cname) + 12 + redis_pfxlen;
+			nlen = cname.size() + 12 + redis_prefix.size();
 			isi_text_enc(tuid, 11, &disk->uuid, 8);
 			isilog(L_DEBUG, "net-redis: requesting disk data %s%s:%s:blk\n",
-					redis_prefix, cname, tuid);
-			lo += snprintf((char*)this->out, lim, "*4\r\n$8\r\nGETRANGE\r\n");
-			lo += snprintf((char*)this->out+lo, lim-lo, "$%ld\r\n%s%s:%s:blk\r\n",
-					4+nlen,	redis_prefix, cname, tuid);
+					redis_prefix, cname.data(), tuid);
+			wr_offset += snprintf((char*)out->u8_head, limit, "*4\r\n$8\r\nGETRANGE\r\n");
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit-wr_offset, "$%zd\r\n%s%s:%s:blk\r\n",
+					4+nlen,	redis_prefix.c_str(), cname.data(), tuid);
 			fullindex = ncmd->param * 4096ull;
-			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
+			l = snprintf(tuid, 16, "%Iu", fullindex);
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit-wr_offset, "$%d\r\n%s\r\n", l, tuid);
 			fullindex += 4095u;
-			l = snprintf(tuid, 16, "%lu", fullindex);
-			lo += snprintf((char*)this->out+lo, lim-lo, "$%d\r\n%s\r\n", l, tuid);
-			write(this->sfd, this->out, lo);
+			l = snprintf(tuid, 16, "%Iu", fullindex);
+			wr_offset += snprintf((char*)out->u8_head+wr_offset, limit-wr_offset, "$%d\r\n%s\r\n", l, tuid);
+			write(this->sfd, (char*)out->u8_head, wr_offset);
 		}
 			break;
 		}
@@ -469,24 +457,24 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 {
 	int i;
 	struct redis_istate *istate = (struct redis_istate *)this->istate;
-	i = redis_fetch_data(this);
+	i = fetch_data();
 	if(i < 0) return i;
 	if(i > 0) return 0;
-	isilog(L_DEBUG, "net-redis: got message l=%d\n", this->rcv);
-	uint8_t *inv = this->in;
-	struct sescommandset *ncmd = 0;
-	session_get_cmdq(this, &ncmd, 0);
+	isilog(L_DEBUG, "net-redis: got message l=%d\n", recv_index);
+	uint8_t *inv = in->u8_head;
+	isiCommand *ncmd = 0;
+	get_cmdq(&ncmd, 0);
 	if(!ncmd) {
 		isilog(L_DEBUG, "net-redis: no message handle command\n");
-		fprintf(stderr, "net-redis: %s\n", this->in);
+		fprintf(stderr, "net-redis: %s\n", in->u8_head);
 	}
 	int cmdnox = 0;
-	while(istate->parseheight || inv < this->in + this->rcv) {
+	while(istate->parseheight || inv < in->u8_head + recv_index) {
 		uint8_t *outstr;
 		struct redis_osp *osp;
 		int fetch = 0;
 		int etype = 0;
-		int eitr = 0;
+		int64_t eitr = 0;
 		if(istate->parseheight) {
 			osp = istate->parsestat + (istate->parseheight - 1);
 			if(istate->parseheight > 1) {
@@ -528,9 +516,9 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 			} else continue;
 		} else if(fetch) {
 			osp = istate->parsestat + istate->parseheight++;
-			if(redis_get_element(this, &inv, osp, &outstr)) {
+			if(get_element(&inv, osp, &outstr)) {
 				isilog(L_ERR, "net-redis: parse error\n");
-				this->rcv = 0;
+				recv_index = 0;
 				return 0;
 			}
 			if(osp->etype == REDIS_ERR) {
@@ -541,7 +529,7 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 		if(etype > REDIS_TYPEMAX) {
 			switch(osp->etype) {
 			case REDIS_DATACOPY:
-				i = redis_load_data(this, &inv, istate);
+				i = load_data(&inv, istate);
 				if(!osp->len) {
 					if(!istate->cplen && istate->zrlen) {
 						memset(istate->cptarget, 0, istate->zrlen);
@@ -551,7 +539,7 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 				}
 				break;
 			case REDIS_DATASKIP:
-				i = redis_skip_data(this, &inv, &osp->len);
+				i = skip_data(&inv, &osp->len);
 				break;
 			}
 		}
@@ -590,22 +578,22 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 				struct isiPLoad *pld = (struct isiPLoad *)ncmd->rdata;
 				switch(etype) {
 				case REDIS_DATA:
-					isilog(L_DEBUG, "net-redis: loadobject data %ld\n", eitr);
+					isilog(L_DEBUG, "net-redis: loadobject data %lld\n", eitr);
 					{
-						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
+						isiInfo *linfo = (isiInfo *)pld->obj;
 						if(eitr == 2) {
 							linfo->nvsize = osp->len;
-							linfo->nvstate = isi_alloc(linfo->nvsize);
+							linfo->nvstate = isi_calloc(linfo->nvsize);
 							redis_cmd_load_data(istate, (uint8_t*)linfo->nvstate, linfo->nvsize);
 						}
 					}
 					ncmd->param++;
 					break;
 				case REDIS_DATAEND:
-					isilog(L_DEBUG, "net-redis: loadobject data success %ld\n", eitr);
+					isilog(L_DEBUG, "net-redis: loadobject data success %lld\n", eitr);
 					break;
 				case REDIS_NIL:
-					isilog(L_DEBUG, "net-redis: loadobject nil data i=%ld\n", eitr);
+					isilog(L_DEBUG, "net-redis: loadobject nil data i=%lld\n", eitr);
 					break;
 				case REDIS_CMDEXIT:
 					if(!ncmd->param) {
@@ -613,7 +601,7 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 						session_async_end(ncmd, ISIERR_NOTFOUND);
 						isi_delete_object(pld->obj);
 					} else {
-						struct isiInfo *linfo = (struct isiInfo *)pld->obj;
+						isiInfo *linfo = (isiInfo *)pld->obj;
 						linfo->otype = pld->ncid;
 						linfo->uuid = pld->uuid;
 						linfo->Load();
@@ -622,18 +610,18 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 					}
 					break;
 				}
-			}
 				break;
+			}
 			case ISIC_DISKLOAD:
 				isilog(L_DEBUG, "net-redis: diskload\n");
 				if(etype == REDIS_DATA) {
-					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
+					isiInfo *disk = (isiInfo *)ncmd->cptr;
 					uint8_t *blkdat;
 					isi_disk_getblock(disk, (void**)&blkdat);
 					redis_cmd_load_data(istate, blkdat, 4096);
 				} else if(etype == REDIS_CMDEXIT) {
-					struct isiInfo *disk = (struct isiInfo *)ncmd->cptr;
-					uint32_t dm[4] = {0x22, ncmd->param, 0};
+					isiInfo *disk = (isiInfo *)ncmd->cptr;
+					uint32_t dm[] = {0x22, ncmd->param, 0};
 					isi_message_dev(disk, -1, dm, 3, mtime);
 				}
 				break;
@@ -654,14 +642,14 @@ int isiSessionRedis::Recv(isi_time_t mtime)
 		}
 		if(etype == REDIS_CMDEXIT) {
 			ncmd = 0;
-			session_get_cmdq(this, NULL, 1); /* remove a command normally */
-			session_get_cmdq(this, &ncmd, 0);
+			get_cmdq(NULL, 1); /* remove a command normally */
+			get_cmdq(&ncmd, 0);
 		}
 	}
-	this->rcv -= (inv - this->in);
-	if(this->rcv) {
-		memmove(this->in, inv, this->rcv);
-		inv = this->in;
+	recv_index -= (inv - in->u8_head);
+	if(recv_index) {
+		memmove(in->u8_head, inv, recv_index);
+		inv = in->u8_head;
 	}
 	return 0;
 }

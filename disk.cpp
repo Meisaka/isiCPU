@@ -5,10 +5,9 @@
 #include "isitypes.h"
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdio.h>
-#include <dirent.h>
+#include <string>
+#include "platform.h"
 
 extern int usefs;
 
@@ -32,8 +31,8 @@ ISIREFLECT(struct disk_svstate,
 	ISIR(disk_svstate, char, dblock)
 )
 
-int isi_read_disk_file(struct isiDisk *disk, uint32_t blockseek);
-int isi_write_disk_file(struct isiDisk *disk);
+int isi_read_disk_file(isiDisk *disk, uint32_t blockseek);
+int isi_write_disk_file(isiDisk *disk);
 
 int isi_text_enc(char *text, int limit, void const *vv, int len)
 {
@@ -56,11 +55,11 @@ int isi_text_enc(char *text, int limit, void const *vv, int len)
 	text[i] = 0;
 	return 0;
 }
-int isi_text_dec(const char *text, int len, int limit, void *vv, int olen)
+int isi_text_dec(const char *text, size_t len, size_t limit, void *vv, int olen)
 {
 	int cs;
 	int32_t ce;
-	int i;
+	size_t i;
 	unsigned char *tid = (unsigned char *)vv;
 	int s;
 	s = 0;
@@ -123,9 +122,7 @@ int isi_fname_id(const char *fname, uint64_t *id)
 	return 0;
 }
 
-int isi_scan_dir()
-{
-	struct dirent *dbuf;
+int isi_scan_dir() {
 	struct dirent *de;
 	DIR *d;
 	char *dot;
@@ -134,10 +131,8 @@ int isi_scan_dir()
 
 	d = opendir(".");
 	if(!d) { isilogerr("opendir"); return -1; }
-	dbuf = (struct dirent*)isi_alloc(offsetof(struct dirent, d_name) + 256);
-	if(!dbuf) { isilogerr("malloc"); closedir(d); return -1; }
 
-	while(!readdir_r(d, dbuf, &de) && de) {
+	while( (de = readdir(d)) ) {
 		dot = strrchr(de->d_name, '.');
 		if(dot) {
 			if(!strncmp(dot+1, "idi", 3) || !strncmp(dot+1, "bin", 3)) {
@@ -154,11 +149,10 @@ int isi_scan_dir()
 		}
 	}
 	closedir(d);
-	free(dbuf);
 	return 0;
 }
 
-int isi_test_disk(struct isiDisk *disk)
+int isi_test_disk(isiDisk *disk)
 {
 	uint32_t *a, *b;
 	struct disk_svstate *ds = (struct disk_svstate*)disk->svstate;
@@ -171,9 +165,8 @@ int isi_test_disk(struct isiDisk *disk)
 	return 0;
 }
 
-int isi_find_media(uint64_t diskid, char **nameout, const char *ext)
+int isi_find_media(uint64_t diskid, std::string &nameout, const char *ext)
 {
-	struct dirent *dbuf;
 	struct dirent *de;
 	DIR *d;
 	char *dot;
@@ -182,78 +175,76 @@ int isi_find_media(uint64_t diskid, char **nameout, const char *ext)
 
 	d = opendir(".");
 	if(!d) { isilogerr("opendir"); return -1; }
-	dbuf = (struct dirent*)isi_alloc(offsetof(struct dirent, d_name) + 256);
-	if(!dbuf) { isilogerr("malloc"); closedir(d); return -1; }
 
-	while(!readdir_r(d, dbuf, &de) && de && !found) {
-		dot = strchr(de->d_name, '.');
-		if(dot) {
-			if(!strncmp(dot+1, ext, 3)) {
-				dsk = 0;
-				if(isi_text_dec(de->d_name, dot - de->d_name, 11, &dsk, 8)) {
-					continue;
-				}
-				if(dsk == diskid) {
-					found = 1;
-					if(nameout) {
-						*nameout = strdup(de->d_name);
-					}
-				}
-			}
+	while((de = readdir(d)) && !found) {
+		dot = strrchr(de->d_name, '.');
+		if(!dot) continue;
+		if(strncmp(dot + 1, ext, 3) != 0) continue;
+		dsk = 0;
+		if(isi_text_dec(de->d_name, dot - de->d_name, 11, &dsk, 8)) {
+			continue;
+		}
+		if(dsk == diskid) {
+			found = 1;
+			nameout.assign(de->d_name);
 		}
 	}
 	closedir(d);
-	free(dbuf);
 	return !found;
 }
 
-int isi_find_disk(uint64_t diskid, char **nameout)
+int isi_find_disk(uint64_t diskid, std::string &nameout)
 {
 	return isi_find_media(diskid, nameout, "idi");
 }
 
-int isi_find_bin(uint64_t diskid, char **nameout)
-{
-	return isi_find_media(diskid, nameout, "bin");
+int isi_find_bin(uint64_t diskid, char **nameout) {
+	std::string strout;
+	int r = isi_find_media(diskid, strout, "bin");
+	if(!r && nameout) {
+		*nameout = (char*)isi_calloc(strout.size() + 1);
+		memcpy(*nameout, strout.c_str(), strout.size() + 1);
+	}
+	return r;
 }
 
-static int isi_read_disk(struct isiInfo *info, uint32_t blkseek)
+static int isi_read_disk(isiInfo *info, uint32_t blkseek)
 {
-	struct isiDisk *disk = (struct isiDisk *)info;
+	isiDisk *disk = (isiDisk *)info;
 	if(info->uuid) {
 		persist_disk(info, blkseek, 0, 1);
-	} else if(disk->fd != -1) {
+	} else if(disk->fd != fdesc_empty) {
 		return isi_read_disk_file(disk, blkseek);
 	}
 	return -1;
 }
 
-static int isi_writeread_disk(struct isiInfo *info, uint32_t blkseek)
+static int isi_writeread_disk(isiInfo *info, uint32_t blkseek)
 {
-	struct isiDisk *disk = (struct isiDisk *)info;
+	isiDisk *disk = (isiDisk *)info;
 	if(info->uuid) {
 		struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
 		persist_disk(info, blkseek, sv->index, 3);
-	} else if(disk->fd != -1) {
+	} else if(disk->fd != fdesc_empty) {
 		isi_write_disk_file(disk);
 		return isi_read_disk_file(disk, blkseek);
 	}
 	return -1;
 }
 
-static int isi_write_disk(struct isiInfo *info)
+static int isi_write_disk(isiInfo *info)
 {
-	struct isiDisk *disk = (struct isiDisk *)info;
+	isiDisk *disk = (isiDisk *)info;
 	if(info->uuid) {
 		struct disk_svstate *sv = (struct disk_svstate *)info->svstate;
 		persist_disk(info, 0, sv->index, 2);
-	} else if(disk->fd != -1) {
+	} else if(disk->fd != fdesc_empty) {
 		return isi_write_disk_file(disk);
 	}
 	return -1;
 }
 
-int isiDisk::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int isiDisk::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	struct disk_rvstate *rv = (struct disk_rvstate *)this->rvstate;
 	struct disk_svstate *sv = (struct disk_svstate *)this->svstate;
@@ -289,7 +280,7 @@ int isiDisk::Unload()
 	return 0;
 }
 
-int isi_disk_isreadonly(struct isiInfo *disk)
+int isi_disk_isreadonly(isiInfo *disk)
 {
 	if(!disk) return -1;
 	if(disk->otype != ISIT_DISK) {
@@ -299,7 +290,7 @@ int isi_disk_isreadonly(struct isiInfo *disk)
 	return (rv->wrprotect != 0);
 }
 
-int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
+int isi_disk_getblock(isiInfo *disk, void **blockaddr)
 {
 	if(!disk || !blockaddr) return -1;
 	if(disk->otype != ISIT_DISK) {
@@ -311,7 +302,7 @@ int isi_disk_getblock(struct isiInfo *disk, void **blockaddr)
 	return 0;
 }
 
-int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex)
+int isi_disk_getindex(isiInfo *disk, uint32_t *blockindex)
 {
 	if(!disk || !blockindex) return -1;
 	if(disk->otype != ISIT_DISK) {
@@ -325,7 +316,7 @@ int isi_disk_getindex(struct isiInfo *disk, uint32_t *blockindex)
 
 isiDisk::isiDisk()
 {
-	this->fd = -1;
+	this->fd = fdesc_empty;
 }
 int isiDisk::Load()
 {
@@ -336,25 +327,23 @@ int isiDisk::Load()
 int isiDisk::Init(const uint8_t *cfg, size_t lcfg)
 {
 	char dskname[32];
-	char *ldisk;
+	std::string ldisk;
 	int oflags = 0;
-	int fd = -1;
+	fdesc_t fd = fdesc_empty;
 	uint64_t diskid = 0;
 	if(isi_fetch_parameter(cfg, lcfg, 1, &diskid, sizeof(uint64_t))) {
 	}
 	if(usefs) {
 		if(diskid) {
 			isi_text_enc(dskname, 11, &diskid, 8);
-			if(isi_find_disk(diskid, &ldisk)) {
-				asprintf(&ldisk, "%s.idi", dskname);
+			if(isi_find_disk(diskid, ldisk)) {
+				ldisk.assign(dskname);
+				ldisk.append(".idi");
 				oflags = O_CREAT;
 			}
-			if(!strcmp(dskname, ldisk)) {
-			}
 			isilog(L_DEBUG, "Openning Disk\n");
-			fd = open(ldisk, O_RDWR | oflags, 0644);
-			free(ldisk);
-			if(fd == -1) {
+			fd = open(ldisk.c_str(), O_RDWR | oflags, 0644);
+			if(fd == fdesc_empty) {
 				isilogerr("open");
 				return ISIERR_FILE;
 			}
@@ -376,11 +365,11 @@ void Disk_Register()
 	isi_register(&Disk_Con);
 }
 
-int isi_read_disk_file(struct isiDisk *disk, uint32_t blockseek)
+int isi_read_disk_file(isiDisk *disk, uint32_t blockseek)
 {
 	int i;
 	size_t f = 0;
-	struct isiInfo *idisk = (struct isiInfo *)disk;
+	isiInfo *idisk = (isiInfo *)disk;
 	struct disk_svstate *ds = (struct disk_svstate*)idisk->svstate;
 	if(!ds) return -1;
 	memset(ds->block, 0, sizeof(ds->block));
@@ -397,11 +386,11 @@ int isi_read_disk_file(struct isiDisk *disk, uint32_t blockseek)
 	return 0;
 }
 
-int isi_write_disk_file(struct isiDisk *disk)
+int isi_write_disk_file(isiDisk *disk)
 {
 	int i;
 	size_t f = 0;
-	struct isiInfo *idisk = (struct isiInfo *)disk;
+	isiInfo *idisk = (isiInfo *)disk;
 	struct disk_svstate *ds = (struct disk_svstate*)idisk->svstate;
 	lseek(disk->fd, sizeof(ds->block) * ds->index, SEEK_SET);
 	if(((i = write(disk->fd, ds->block, 4096)) > 0)) {
@@ -423,18 +412,19 @@ size_t isi_fsize(const char *path)
 
 int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t nsize)
 {
-	int fd, i;
+	fdesc_t fd;
+	int i;
 	struct stat fdi;
 	size_t f, o;
 	uint16_t eswp;
 	if(!nmem) { return -5; }
 	fd = open(path, O_RDONLY);
-	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fd == fdesc_empty) { isilogerr("open"); return -5; }
 	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	f = fdi.st_size & (~1);
 	if(f > nsize) f = nsize;
 	o = 0;
-	while(((i = read(fd, nmem+o, f - o)) > 0) && o < f) {
+	while(((i = read(fd, (char*)(nmem+o), f - o)) > 0) && o < f) {
 		o += i;
 	}
 	if( i < 0 ) {
@@ -457,19 +447,20 @@ int loadbinfileto(const char* path, int endian, unsigned char *nmem, uint32_t ns
 
 int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *nsize)
 {
-	int fd, i;
+	fdesc_t fd;
+	int i;
 	struct stat fdi;
 	size_t f, o;
 	uint16_t eswp;
 	uint8_t *mem;
 	fd = open(path, O_RDONLY);
-	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fd == fdesc_empty) { isilogerr("open"); return -5; }
 	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	f = fdi.st_size & (~1);
-	mem = (uint8_t*)isi_alloc(f);
+	mem = (uint8_t*)isi_calloc(f);
 	if(!mem) { close(fd); return -5; }
 	o = 0;
-	while(((i = read(fd, mem+o, f - o)) > 0) && o < f) {
+	while(((i = read(fd, (char*)(mem+o), f - o)) > 0) && o < f) {
 		o += i;
 	}
 	if( i < 0 ) {
@@ -495,16 +486,17 @@ int loadbinfile(const char* path, int endian, unsigned char **nmem, uint32_t *ns
 
 int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsize)
 {
-	int fd, i;
+	fdesc_t fd;
+	int i;
 	struct stat fdi;
 	size_t o;
 	uint16_t eswp;
 	uint8_t *mem;
 	fd = open(path, O_RDWR);
-	if(fd < 0) { isilogerr("open"); return -5; }
+	if(fd == fdesc_empty) { isilogerr("open"); return -5; }
 	if(fstat(fd, &fdi)) { isilogerr("fstat"); close(fd); return -3; }
 	if(endian) {
-		mem = (uint8_t*)isi_alloc(nsize);
+		mem = (uint8_t*)isi_calloc(nsize);
 		if(!mem) { close(fd); return -5; }
 		o = 0;
 		while(o < nsize) {
@@ -517,7 +509,7 @@ int savebinfile(const char* path, int endian, unsigned char *nmem, uint32_t nsiz
 	}
 	o = 0;
 	i = 0;
-	while(o < nsize && ((i = write(fd, nmem+o, nsize-o)) > 0)) {
+	while(o < nsize && ((i = write(fd, (const char*)(nmem+o), nsize-o)) > 0)) {
 		o += i;
 	}
 	if(endian) free(mem);

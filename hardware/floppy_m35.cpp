@@ -49,24 +49,22 @@ ISIREFLECT(struct Disk_M35FD_svstate,
 class Disk_M35FD : public isiInfo {
 public:
 	//virtual int Init(const uint8_t *, size_t);
-	//virtual int QuerySize(int, size_t *) const;
 	//virtual int Load();
 	//virtual int Unload();
 	virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
-	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Deattach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Attach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Deattach(int32_t topoint, isiInfo *dev, int32_t frompoint);
 	virtual int Reset();
 protected:
 	void statechange(isi_time_t mtime);
-	int HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun);
+	int HWI(isiInfo *src, uint32_t *msg, int len, isi_time_t crun);
 };
 
 static struct isidcpudev Disk_M35FD_Meta = {0x000b,0x4fd524c5,MF_MACK};
 static isiClass<Disk_M35FD> Disk_M35FD_Con(
-	ISIT_HARDWARE, "mack_35fd", "Mackapar M35FD",
+	ISIT_HARDWARE, "txc_mack_35fd", "Mackapar M35FD",
 	&ISIREFNAME(struct Disk_M35FD_rvstate),
 	&ISIREFNAME(struct Disk_M35FD_svstate),
 	NULL,
@@ -77,7 +75,7 @@ void Disk_M35FD_Register()
 	isi_register(&Disk_M35FD_Con);
 }
 
-int Disk_M35FD::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
+int Disk_M35FD::QueryAttach(int32_t point, isiInfo *dev, int32_t devpoint)
 {
 	if(!dev || (point != ISIAT_UP && dev->otype != ISIT_DISK)) return -1;
 	return 0;
@@ -108,7 +106,7 @@ void Disk_M35FD::statechange(isi_time_t mtime)
 	}
 }
 
-int Disk_M35FD::HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun)
+int Disk_M35FD::HWI(isiInfo *src, uint32_t *msg, int len, isi_time_t crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)this->svstate;
@@ -116,7 +114,7 @@ int Disk_M35FD::HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun
 	uint16_t mc;
 	int i;
 	int r = 0;
-	struct isiInfo *media = 0;
+	isiInfo *media = 0;
 	this->get_dev(0, &media);
 	switch(msg[0]) {
 	case 0:
@@ -190,7 +188,7 @@ int Disk_M35FD::Run(isi_time_t crun)
 {
 	struct Disk_M35FD_rvstate *dev = (struct Disk_M35FD_rvstate*)this->rvstate;
 	struct Disk_M35FD_svstate *dss = (struct Disk_M35FD_svstate*)this->svstate;
-	struct isiInfo *media = 0;
+	isiInfo *media = 0;
 	if(!this->nrun) {
 		this->nrun = crun;
 	}
@@ -254,7 +252,7 @@ int Disk_M35FD::Run(isi_time_t crun)
 	return 0;
 }
 
-int Disk_M35FD::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int Disk_M35FD::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 		/* these should return 0 if they don't have function calls */

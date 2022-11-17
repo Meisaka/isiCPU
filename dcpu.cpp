@@ -19,7 +19,7 @@ struct DCPU {
 
 	uint64_t cycl;
 	int MODE;
-	memory64x16* memptr;
+	isiMemory* memptr;
 	uint32_t hwcount;
 	/* Interupt queue */
 	int IQC;
@@ -34,7 +34,7 @@ ISIREFLECT(struct DCPU,
 	ISIR(DCPU, uint16_t, IA)
 	ISIR(DCPU, uint64_t, cycl)
 	ISIR(DCPU, int, MODE)
-	ISIR(DCPU, memory64x16*, memptr)
+	ISIR(DCPU, isiMemory*, memptr)
 	ISIR(DCPU, uint32_t, hwcount)
 	ISIR(DCPU, int, IQC)
 )
@@ -72,10 +72,10 @@ static const char * DIAG_L2 =
 	" A    B    C    X    Y    Z    I    J    PC   SP   EX   IA   CyL \n"
 	"%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x % 2d  >";
 
-static inline void DCPU_reref(int, uint16_t, struct DCPU *, isiRam*);
-static inline void DCPU_rerefB(int, uint16_t, struct DCPU *, isiRam*);
-static inline uint16_t DCPU_deref(int, struct DCPU *, isiRam*);
-static inline uint16_t DCPU_derefB(int, struct DCPU *, isiRam*);
+static inline void DCPU_reref(int, uint16_t, struct DCPU *, isiMemory*);
+static inline void DCPU_rerefB(int, uint16_t, struct DCPU *, isiMemory*);
+static inline uint16_t DCPU_deref(int, struct DCPU *, isiMemory*);
+static inline uint16_t DCPU_derefB(int, struct DCPU *, isiMemory*);
 static int DCPU_setonfire(struct DCPU *);
 static inline void DCPU_skipref(int, struct DCPU *);
 
@@ -85,30 +85,28 @@ public:
 		isi_setrate(this, 100000); // 100kHz
 	}
 	virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
-	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	virtual int Attach(int32_t topoint, isiInfo *dev, int32_t frompoint);
 	virtual int Reset();
+protected:
+	virtual int on_attached(int32_t to_point, isiInfo *dev, int32_t from_point);
 };
 static isiClass<DCPU16> DCPU_Con(
 	ISIT_CPU, "dcpu", "DCPU-16 1.7",
 	&ISIREFNAME(struct DCPU), NULL, NULL, NULL);
 
-int DCPU16::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
+int DCPU16::QueryAttach(int32_t point, isiInfo *dev, int32_t devpoint) {
 	if(!dev) return ISIERR_INVALIDPARAM;
 	if(dev->otype == ISIT_MEM16) return 0;
 	if(point == ISIAT_UP) return 0;
 	return ISIERR_NOCOMPAT;
 }
-int DCPU16::Attach(int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
+int DCPU16::Attach(int32_t point, isiInfo *dev, int32_t devpoint) {
 	if(!dev) return ISIERR_INVALIDPARAM;
 	return 0;
 }
-int DCPU16::Attached(int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
+int DCPU16::on_attached(int32_t to_point, isiInfo *dev, int32_t from_point) {
 	if(!dev) return ISIERR_INVALIDPARAM;
 	return 0;
 }
@@ -116,14 +114,14 @@ int DCPU16::Attached(int32_t point, struct isiInfo *dev, int32_t devpoint)
 int DCPU16::Reset()
 {
 	struct DCPU *pr; pr = (struct DCPU*)this->rvstate;
-	pr->memptr = (memory64x16*)this->mem;
-	int i;
+	pr->memptr = this->mem;
+	uint32_t i;
 	for(i = 0; i < 8; i++)
 	{
 		pr->R[i] = 0;
 	}
 	if(pr->memptr)
-		for(i = 0; i < 0x10000; i++) pr->memptr->d_wr((uint16_t)i, 0);
+		for(i = 0; i < 0x10000; i++) pr->memptr->d_wr(i, 0);
 	else
 		return -1;
 	pr->PC = 0;
@@ -142,11 +140,11 @@ int DCPU16::Reset()
 	return 0;
 }
 
-void showdisasm_dcpu(const struct isiInfo *info)
+void showdisasm_dcpu(const isiInfo *info)
 {
 	const struct DCPU * cpu = (const struct DCPU*)info->rvstate;
 	uint16_t ma = cpu->PC;
-	uint16_t m = (cpu->memptr)->ram[ma++];
+	uint16_t m = cpu->memptr->i_rd(ma++);
 	int op = m & 0x1f;
 	int ob = (m >> 5) & 0x1f;
 	int oa = (m >> 10) & 0x3f;
@@ -158,7 +156,7 @@ void showdisasm_dcpu(const struct isiInfo *info)
 		lu |= 1;
 		lua = cpu->R[oa - 8];
 	} else if((oa >= 16 && oa < 24) || oa == 26 || oa == 30 || oa == 31) {
-		nwa = (cpu->memptr)->ram[ma++];
+		nwa = cpu->memptr->i_rd(ma++);
 		if(oa != 31) lu |= 1;
 		if(oa >= 16 && oa < 24) {
 			lua = cpu->R[oa - 16] + nwa;
@@ -175,7 +173,7 @@ void showdisasm_dcpu(const struct isiInfo *info)
 			lu |= 2;
 			lub = cpu->R[ob - 8];
 		} else if((ob >= 16 && ob < 24) || ob == 26 || ob == 30 || ob == 31) {
-			nwb = (cpu->memptr)->ram[ma++];
+			nwb = cpu->memptr->i_rd(ma++);
 			if(ob != 31) lu |= 2;
 			if(ob >= 16 && ob < 24) {
 				lub = cpu->R[ob - 16] + nwb;
@@ -198,15 +196,15 @@ void showdisasm_dcpu(const struct isiInfo *info)
 		fprintf(stderr, DCPUP[oa], nwa);
 	}
 	if(lu & 2) {
-		fprintf(stderr, "  b: %04x [%04x]", lub, cpu->memptr->ram[lub]);
+		fprintf(stderr, "  b: %04x [%04x]", lub, cpu->memptr->i_rd(lub));
 	}
 	if(lu & 1) {
-		fprintf(stderr, "  a: %04x [%04x]", lua, cpu->memptr->ram[lua]);
+		fprintf(stderr, "  a: %04x [%04x]", lua, cpu->memptr->i_rd(lua));
 	}
 	fprintf(stderr, "\n");
 }
 
-void showdiag_dcpu(const struct isiInfo* info, int fmt)
+void showdiag_dcpu(const isiInfo* info, int fmt)
 {
 	const DCPU16 *l_info = (const DCPU16 *)info;
 	const struct DCPU * cpu = (const struct DCPU*)info->rvstate;
@@ -220,7 +218,7 @@ void showdiag_dcpu(const struct isiInfo* info, int fmt)
 	}
 }
 
-int DCPU16::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int DCPU16::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	struct DCPU *pr; pr = (struct DCPU*)this->rvstate;
 	if(msg[0] == ISE_SREG) {
@@ -244,7 +242,7 @@ int DCPU16::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, 
 }
 
 // Write referenced B operand
-static inline void DCPU_reref(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
+static inline void DCPU_reref(int p, uint16_t v, struct DCPU *pr, isiMemory *ram)
 {
 	switch(p & 0x1f) {
 	case 0x00:
@@ -287,7 +285,7 @@ static inline void DCPU_reref(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
 }
 
 // re-Write referenced B operand
-static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
+static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU *pr, isiMemory *ram)
 {
 	switch(p & 0x1f) {
 	case 0x00:
@@ -331,7 +329,7 @@ static inline void DCPU_rerefB(int p, uint16_t v, struct DCPU *pr, isiRam *ram)
 
 
 // Dereference an A operand for ops
-static inline uint16_t DCPU_deref(int p, struct DCPU *pr, isiRam *ram)
+static inline uint16_t DCPU_deref(int p, struct DCPU *pr, isiMemory *ram)
 {
 	switch(p) {
 	case 0x00:
@@ -372,7 +370,7 @@ static inline uint16_t DCPU_deref(int p, struct DCPU *pr, isiRam *ram)
 }
 
 // Dereference a B operand for R/W ops:
-static inline uint16_t DCPU_derefB(int p, struct DCPU *pr, isiRam *ram)
+static inline uint16_t DCPU_derefB(int p, struct DCPU *pr, isiMemory *ram)
 {
 	switch(p) {
 	case 0x00:
@@ -456,7 +454,7 @@ static const int DCPU_dwtbl[] =
 int DCPU16::Run(isi_time_t crun)
 {
 	struct DCPU *pr = (struct DCPU*)this->rvstate;
-	memory64x16 *ram = pr->memptr;
+	isiMemory *ram = pr->memptr;
 	size_t cycl = 0;
 	uint32_t iom[10];
 	int op;
@@ -695,7 +693,7 @@ int DCPU16::Run(isi_time_t crun)
 					} else {
 						alu2.ui = alu2.ui / alu1.u;
 						if(sgn)
-							alu2.ui = -alu2.ui;
+							alu2.si = -alu2.si;
 					}
 				}
 				break;

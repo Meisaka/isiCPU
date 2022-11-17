@@ -14,14 +14,14 @@ ISIREFLECT(struct vppDACA_rvstate,
 )
 
 class vppDACA : public isiInfo {
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
-	int HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t crun);
-	int HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun);
+	int HWQ(isiInfo *src, uint32_t *msg, isi_time_t crun);
+	int HWI(isiInfo *src, uint32_t *msg, isi_time_t crun);
 };
 struct isidcpudev vppDACA_Meta = {0x0001,0x31e1daca,0x621caf3a}; /* v1 / D/A Ctrl Adptr / VeXXaN */
-struct isiClass<vppDACA> vppDACA_Con(
-	ISIT_HARDWARE, "vppdaca", "D/A Control Adapter",
+isiClass<vppDACA> vppDACA_Con(
+	ISIT_HARDWARE, "trk_vpp_daca", "D/A Control Adapter",
 	&ISIREFNAME(struct vppDACA_rvstate),
 	NULL,
 	NULL,
@@ -38,11 +38,11 @@ int vppDACA::Reset()
 	return 0;
 }
 
-int vppDACA::HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
+int vppDACA::HWQ(isiInfo *src, uint32_t *msg, isi_time_t crun)
 {
 	return 0;
 }
-int vppDACA::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
+int vppDACA::HWI(isiInfo *src, uint32_t *msg, isi_time_t crun)
 {
 	struct vppDACA_rvstate *dev = (struct vppDACA_rvstate*)this->rvstate;
 	switch(msg[0]) {
@@ -65,7 +65,7 @@ int vppDACA::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
 	return 0;
 }
 
-int vppDACA::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int vppDACA::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	struct vppDACA_rvstate *dev = (struct vppDACA_rvstate*)this->rvstate;
 	switch(msg[0]) { /* message type, msg[1] is device index */

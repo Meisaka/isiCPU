@@ -21,14 +21,14 @@ ISIREFLECT(struct imva_rvstate,
 
 class imva : public isiInfo {
 public:
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
 
 	int interrupt(uint32_t *msg);
 };
 struct isidcpudev imva_Meta = {0x0538,0x75FEA113,0x59EA5742};
-struct isiClass<imva> imva_Con(
-	ISIT_HARDWARE, "imva", "IMVA Display",
+isiClass<imva> imva_Con(
+	ISIT_HARDWARE, "trk_mei_imva", "IMVA Display",
 	&ISIREFNAME(struct imva_rvstate),
 	NULL,
 	NULL,
@@ -53,7 +53,7 @@ int imva::Reset()
 int imva::interrupt(uint32_t *msg)
 {
 	struct imva_rvstate *imva = (struct imva_rvstate *)this->rvstate;
-	struct memory64x16 *mem = (struct memory64x16*)this->mem;
+	isiMemory *mem = this->mem;
 	switch(msg[0]) {
 	case 0:
 		imva->base = msg[1];
@@ -84,7 +84,7 @@ int imva::interrupt(uint32_t *msg)
 	return 0;
 }
 
-int imva::MsgIn(struct isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int imva::MsgIn(isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case 0: return this->Reset();

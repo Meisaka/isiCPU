@@ -3,23 +3,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <stdarg.h>
 #include <time.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
-#include <poll.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
 #include <signal.h>
+#include <string>
+#include <vector>
 #include "dcpuhw.h"
 #include "isitypes.h"
 #include "netmsg.h"
-#define CLOCK_MONOTONIC_RAW             4   /* since 2.6.28 */
-#define CLOCK_REALTIME_COARSE           5   /* since 2.6.32 */
-#define CLOCK_MONOTONIC_COARSE          6   /* since 2.6.32 */
+#include "platform.h"
 
 static isi_time_t LTUTime;
 static uint32_t numberofcpus = 1;
@@ -28,15 +23,15 @@ static int loadendian = 0;
 static int flagdbg = 0;
 static int rqrun = 0;
 static int flagsvr = 0;
-static char * binf = 0;
-static char * endf = 0;
-static char * redisaddr = 0;
-static char * diskf = 0;
+static std::string binf;
+static std::string endf;
+static std::string redisaddr;
+static std::string diskf;
 static int listenportnumber = 58704;
 static int verblevel = L_INFO;
 static uintptr_t gccq = 0;
 
-int fdlog = STDERR_FILENO;
+fdesc_t fdlog = STDERR_FILENO;
 int usefs = 0;
 
 static const int quantum = 1000000000 / 10000; // ns
@@ -46,23 +41,20 @@ enum {
 	CPUSMIN = 20
 };
 
-extern struct isiDevTable alldev;
-extern struct isiDevTable allcpu;
-extern struct isiConTable allcon;
-extern struct isiObjTable allobj;
-struct isiSessionTable allses;
+extern std::vector<isiInfo*> allcpu;
+extern std::vector<isiObjSlot> allobj;
+extern std::vector<isiSession*> allses;
+
+std::vector<struct pollfd> polltable;
 
 void isi_run_sync(isi_time_t crun);
 void isi_register_objects();
-void isi_init_contable();
-void isi_objtable_init();
 int isi_scan_dir();
-void isi_init_sestable();
-int isi_delete_ses(struct isiSession *s);
+int isi_delete_ses(isiSession *s);
 int makeserver(int portnumber);
 int redis_make_session_lu(const char * addrstr);
-void showdisasm_dcpu(const struct isiInfo *info);
-void showdiag_dcpu(const struct isiInfo* info, int fmt);
+void showdisasm_dcpu(const isiInfo *info);
+void showdiag_dcpu(const isiInfo* info, int fmt);
 
 static const char * const gsc_usage =
 "Usage:\n%s [-DFersv] [-p <portnum>] [-B <binid>] [-d <diskid>] [-R <connection>]\n%s -E <file>\n"
@@ -87,10 +79,30 @@ static const char * const gsc_usage =
 
 #define ISILOGBUFFER 4096
 static char logwrout[ISILOGBUFFER];
-void isilogerr(const char * desc)
-{
+void isilogneterr(const char * desc) {
 	int r;
+#ifdef WIN32
+	r = FormatMessageA(
+		FORMAT_MESSAGE_FROM_SYSTEM, nullptr,
+		WSAGetLastError(), 0,
+		logwrout, ISILOGBUFFER,
+		nullptr);
+#else
 	r = snprintf(logwrout, ISILOGBUFFER, "Error: %s: %s\n", desc, strerror(errno));
+#endif
+	if(r > 0) {
+		write(fdlog, logwrout, r);
+	}
+}
+void isilogerr(const char * desc) {
+	int r;
+	int ec = errno;
+#ifdef WIN32
+	if(ec == 0) {
+		ec = WSAGetLastError();
+	}
+#endif
+	r = snprintf(logwrout, ISILOGBUFFER, "Error: %s: %s\n", desc, strerror(ec));
 	if(r > 0) {
 		write(fdlog, logwrout, r);
 	}
@@ -111,6 +123,7 @@ void isilog(int level, const char *format, ...)
 	va_end(vl);
 }
 
+#ifndef _MSC_VER
 void sysfaulthdl(int ssn) {
 	switch(ssn) {
 	case SIGTERM:
@@ -135,20 +148,14 @@ void sysfaulthdl(int ssn) {
 		break;
 	}
 }
+#endif
 
 void showdiag_up(int l)
 {
-	fprintf(stderr, "\e[%dA", l);
+	fprintf(stderr, "\x1b[%dA", l);
 }
 
-void isi_fetch_time(isi_time_t * t)
-{
-	struct timespec mono;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &mono);
-	*t = mono.tv_sec * 1000000000 + mono.tv_nsec;
-}
-
-void isi_add_time(isi_time_t * t, size_t nsec) {
+void isi_add_time(isi_time_t *t, size_t nsec) {
 	*t += nsec;
 }
 
@@ -156,7 +163,7 @@ int isi_time_lt(isi_time_t const *a, isi_time_t const *b) {
 	return (*a < *b);
 }
 
-void isi_setrate(struct isiCPUInfo *info, size_t rate) {
+void isi_setrate(isiCPUInfo *info, size_t rate) {
 	info->runrate = 1000000000 / rate; // Nano seconds per cycle (100kHz)
 	if(info->runrate > quantum) {
 		info->itvl = (info->runrate / quantum); // quantums per cycle
@@ -167,74 +174,73 @@ void isi_setrate(struct isiCPUInfo *info, size_t rate) {
 	}
 }
 
-int isi_addcpu()
-{
-	struct isiInfo *bus, *ninfo;
-	struct isiCPUInfo *cpu;
-	isiram nmem;
+int add_dcpu_prefab() {
+	isiInfo *bus, *ninfo;
+	isiCPUInfo *cpu = nullptr;
+	isiMemory *nmem;
 	isi_make_object(isi_lookup_name("dcpu"), (isiObject**)&cpu, 0, 0);
+	if(!cpu) return -1;
 	cpu->ctl = flagdbg ? (ISICTL_DEBUG | ISICTL_TRACE | ISICTL_STEP) : 0;
-	isi_make_object(isi_lookup_name("memory_16x64k"), (isiObject**)&nmem, 0, 0);
+	isi_make_object(isi_lookup_name("memory_64kx16"), (isiObject**)&nmem, 0, 0);
 	isi_make_object(isi_lookup_name("dcpu_hwbus"), (isiObject**)&bus, 0, 0);
-	isi_attach(bus, 0, (struct isiInfo*)nmem, ISIAT_APPEND, 0, 0);
-	isi_attach(bus, 0, (struct isiInfo*)cpu, ISIAT_UP, 0, 0);
-	isi_make_object(isi_lookup_name("tc_nya_lem"), (isiObject**)&ninfo, 0, 0);
+	isi_attach(bus, 0, (isiInfo*)nmem, ISIAT_APPEND, 0, 0);
+	isi_attach(bus, 0, (isiInfo*)cpu, ISIAT_UP, 0, 0);
+	isi_make_object(isi_lookup_name("tcm_nya_lem"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("clock"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("txc_gen_clock"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("speaker"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("trk_gen_speaker"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("tc_keyboard"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tcm_gen_keyboard"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
-	isi_make_object(isi_lookup_name("kaihic32"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("tcm_kai_hic32"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
-	if(binf) {
+	if(!binf.empty()) {
 		uint8_t ist[24];
 		ist[0] = 0;
 		uint64_t id = 0;
-		isi_fname_id(binf, &id);
+		isi_fname_id(binf.c_str(), &id);
 		isi_write_parameter(ist, 24, 2, &id, sizeof(uint64_t));
 		if(loadendian) isi_write_parameter(ist, 24, 3, &id, 0);
-		isi_make_object(isi_lookup_name("rom"), (isiObject**)&ninfo, ist, 24);
+		isi_make_object(isi_lookup_name("trk_gen_eprom"), (isiObject**)&ninfo, ist, 24);
 		isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 	}
 
-	isi_make_object(isi_lookup_name("mack_35fd"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("txc_mack_35fd"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
-	if(diskf) {
+	if(!diskf.empty()) {
 		uint8_t ist[24];
 		ist[0] = 0;
 		uint64_t dsk = 0;
-		struct isiInfo *ndsk;
-		isi_fname_id(diskf, &dsk);
+		isiInfo *ndsk;
+		isi_fname_id(diskf.c_str(), &dsk);
 		isi_write_parameter(ist, 24, 1, &dsk, sizeof(uint64_t));
 		isi_make_object(isi_lookup_name("disk"), (isiObject**)&ndsk, ist, 24);
 		isi_attach(ninfo, 0, ndsk, ISIAT_UP, 0, 0);
 	}
-	isi_make_object(isi_lookup_name("imva"), (isiObject**)&ninfo, 0, 0);
+	isi_make_object(isi_lookup_name("trk_mei_imva"), (isiObject**)&ninfo, 0, 0);
 	isi_attach(bus, ISIAT_APPEND, ninfo, ISIAT_UP, 0, 0);
 
 	return 0;
 }
 
-void isi_debug_dump_objtable()
-{
+void isi_debug_dump_objtable() {
 	uint32_t u = 0;
-	while(u < allobj.count) {
-		fprintf(stderr, "obj-list: [%08x]: %x\n", allobj.table[u].ptr->id, allobj.table[u].ptr->otype);
+	while(u < allobj.size()) {
+		if(allobj[u].ptr)
+			fprintf(stderr, "obj-list: [%08x]: %x\n", allobj[u].ptr->id, allobj[u].ptr->otype);
 		u++;
 	}
 }
 
-void isi_debug_dump_cputable()
-{
+void isi_debug_dump_cputable() {
 	uint32_t u = 0;
-	while(u < allcpu.count) {
-		fprintf(stderr, "cpu-list: [%08x]: %x\n", allcpu.table[u]->id, allcpu.table[u]->otype);
+	while(u < allcpu.size()) {
+		fprintf(stderr, "cpu-list: [%08x]: %x\n", allcpu[u]->id, allcpu[u]->otype);
 		u++;
 	}
 }
@@ -244,7 +250,7 @@ class isiSessionTTY : public isiSession {
 	virtual int Recv(isi_time_t mtime);
 	virtual int STick(isi_time_t mtime) { return 0; }
 	virtual int LTick(isi_time_t mtime) { return 0; }
-	virtual int AsyncDone(struct sescommandset *cmd, int result) { return 0; }
+	virtual int AsyncDone(isiCommand *cmd, int result) { return 0; }
 };
 static isiClass<isiSessionTTY> isiSessionTTY_C(ISIT_SESSION_TTY, "<isiSessionTTY>", "");
 
@@ -254,9 +260,9 @@ int isiSessionTTY::Recv(isi_time_t mtime)
 	char cc[16];
 	i = read(this->sfd, cc, 16);
 	if(i < 1) return 0;
-	struct isiCPUInfo *cpu = NULL;
-	if(allcpu.count) {
-		cpu = (struct isiCPUInfo*)allcpu.table[0];
+	isiCPUInfo *cpu = NULL;
+	if(allcpu.size()) {
+		cpu = (isiCPUInfo*)allcpu[0];
 	}
 	switch(cc[0]) {
 	case 10:
@@ -307,8 +313,8 @@ int isiSessionTTY::Recv(isi_time_t mtime)
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			ti = ((isiram)allcpu.table[0]->mem)->d_rd(t);
-			fprintf(stderr, "\e[Kdebug: read %04x:%04x\n", t, ti);
+			ti = allcpu[0]->mem->d_rd(t);
+			fprintf(stderr, "\x1b[Kdebug: read %04x:%04x\n", t, ti);
 		}
 		break;
 	case 'b':
@@ -328,9 +334,9 @@ int isiSessionTTY::Recv(isi_time_t mtime)
 				}
 				t = (t << 4) | (ti & 15);
 			}
-			((isiram)allcpu.table[0]->mem)->togglebrk(t);
-			k = ((isiram)allcpu.table[0]->mem)->isbrk(t);
-			fprintf(stderr, "\e[Kdebug: Break point %sabled at %04x\n", k?"en":"dis",t);
+			allcpu[0]->mem->togglebrk(t);
+			k = allcpu[0]->mem->isbrk(t);
+			fprintf(stderr, "\x1b[Kdebug: Break point %sabled at %04x\n", k?"en":"dis",t);
 		}
 		break;
 	case 'x':
@@ -339,21 +345,21 @@ int isiSessionTTY::Recv(isi_time_t mtime)
 	case 't':
 		if(!cpu) break;
 		cpu->ctl ^= ISICTL_TRACEC;
-		fprintf(stderr, "\e[Kdebug: trace on continue %sabled\n", (cpu->ctl & ISICTL_TRACEC)?"en":"dis");
+		fprintf(stderr, "\x1b[Kdebug: trace on continue %sabled\n", (cpu->ctl & ISICTL_TRACEC)?"en":"dis");
 		break;
 	case 'n':
-		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
+		if(allcpu.size()) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_synctable();
 		break;
 	case 'L':
 		isi_redis_test();
 		break;
 	case 'l':
-		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
+		if(allcpu.size()) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_objtable();
 		break;
 	case 'p':
-		if(allcpu.count) fprintf(stderr, "\n\n\n\n");
+		if(allcpu.size()) fprintf(stderr, "\n\n\n\n");
 		isi_debug_dump_cputable();
 		break;
 	default:
@@ -362,20 +368,19 @@ int isiSessionTTY::Recv(isi_time_t mtime)
 	return 0;
 }
 
-int make_interactive()
-{
-	struct isiSession *ses;
+int make_interactive() {
+	isiSession *ses;
 	int i;
 	if((i= isi_create_object(ISIT_SESSION_TTY, NULL, (isiObject**)&ses))) {
 		return i;
 	}
-	if(fcntl(0, F_SETFL, O_NONBLOCK) < 0) {
+	if(set_nonblock(STDIN_FILENO) < 0) {
 		isilogerr("fcntl");
 		return -1;
 	}
-	ses->sfd = 0;
+	ses->sfd = STDIN_FILENO;
 	// TODO tty session class!
-	isi_pushses(ses);
+	allses.push_back(ses);
 	return 0;
 }
 
@@ -383,6 +388,8 @@ struct stats {
 	int quanta;
 	int cpusched;
 };
+
+void platform_test();
 
 struct stats allstats = {0, };
 static int parse_args(int argc, char**argv)
@@ -412,7 +419,7 @@ static int parse_args(int argc, char**argv)
 				case 'd':
 					k = -1;
 					if(i+1<argc) {
-						diskf = strdup(argv[++i]);
+						diskf = argv[++i];
 						usefs = 1;
 					}
 					break;
@@ -433,7 +440,7 @@ static int parse_args(int argc, char**argv)
 				case 'E':
 					k = -1;
 					if(i+1<argc) {
-						endf = strdup(argv[++i]);
+						endf = argv[++i];
 					}
 					break;
 				case 's':
@@ -445,15 +452,18 @@ static int parse_args(int argc, char**argv)
 				case 'R':
 					k = -1;
 					if(i+1<argc) {
-						redisaddr = strdup(argv[++i]);
+						redisaddr = argv[++i];
 					}
 					break;
 				case 'B':
 					k = -1;
 					if(i+1<argc) {
-						binf = strdup(argv[++i]);
+						binf = argv[++i];
 					}
 					break;
+				case 'Q':
+					platform_test();
+					return 1;
 				}
 			}
 			break;
@@ -467,50 +477,22 @@ static int parse_args(int argc, char**argv)
 
 void open_log()
 {
-	int lf;
-	if( (lf = open("/var/log/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+	fdesc_t lf;
+	if( (lf = open("/var/log/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) != fdesc_empty ) {
 		fdlog = lf;
-	} else if( (lf = open("/var/lib/isicpu/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+	} else if( (lf = open("/var/lib/isicpu/isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) != fdesc_empty ) {
 		fdlog = lf;
-	} else if( (lf = open("isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) > -1 ) {
+	} else if( (lf = open("isi.log", O_WRONLY | O_APPEND | O_CREAT, 0644)) != fdesc_empty ) {
 		fdlog = lf;
 		isilog(L_WARN, "local dir log file\n");
-	} else fdlog = -1;
-}
-
-void enter_service()
-{
-	pid_t pid, sid;
-	pid = fork();
-	if(pid < 0) {
-		isilogerr("fork");
-		exit(1);
-	}
-	if(pid > 0) {
-		isilog(L_INFO, "entering service\n");
-		exit(0);
-	}
-	umask(0);
-	open_log();
-	/*
-	if( (chdir("/")) < 0 ) {
-		isilogerr("chdir");
-	}*/
-	sid = setsid();
-	if(sid < 0) {
-		isilogerr("setsid");
-		exit(1);
-	}
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
+	} else fdlog = fdesc_empty;
 }
 
 static size_t isi_run_cpu(uint32_t cpunumber)
 {
-	struct isiCPUInfo * ccpu;
-	struct isiInfo * ccpi;
-	ccpu = (struct isiCPUInfo*)(ccpi = allcpu.table[cpunumber]);
+	isiCPUInfo * ccpu;
+	isiInfo * ccpi;
+	ccpu = (isiCPUInfo*)(ccpi = allcpu[cpunumber]);
 	isi_time_t CRun;
 	int ccq = 0;
 	int tcc = numberofcpus * 2;
@@ -544,24 +526,20 @@ void isi_register_netsync();
 
 int main(int argc, char**argv, char**envp)
 {
+	int i;
+	i = platform_startup();
+	if(i) return i;
 	uint32_t cux;
 	uintptr_t lucycles = 0;
 	int paddlimit = 0;
 	int premlimit = 0;
 
-	isi_init_contable();
 	isi_register_server();
 	isi_register(&isiSessionTTY_C);
 	isi_register_redis();
 	cemei_register();
 	isi_register_netsync();
 	isi_register_objects();
-	isi_objtable_init();
-	isi_init_sestable();
-	isi_inittable(&alldev);
-	isi_inittable(&allcpu);
-	isi_synctable_init();
-	int i;
 	uint32_t k;
 
 	if( argc > 1 ) {
@@ -572,24 +550,27 @@ int main(int argc, char**argv, char**envp)
 		return 0;
 	}
 
-	if(endf) {
+	if(!endf.empty()) {
 		unsigned char * mflip;
 		uint32_t rsize;
-		loadbinfile(endf, 1, &mflip, &rsize);
-		savebinfile(endf, 0, mflip, rsize);
+		loadbinfile(endf.c_str(), 1, &mflip, &rsize);
+		savebinfile(endf.c_str(), 0, mflip, rsize);
 		return 0;
 	}
 
+#ifndef WIN32
 	struct sigaction hnler;
 	hnler.sa_handler = sysfaulthdl;
 	hnler.sa_flags = 0;
+#endif
 
-	if(redisaddr) {
-		redis_make_session_lu(redisaddr);
-	}
 	if(!rqrun && !flagsvr) {
 		fprintf(stderr, "At least -r or -s must be specified.\n");
 		return 0;
+	}
+
+	if(!redisaddr.empty()) {
+		redis_make_session_lu(redisaddr.c_str());
 	}
 
 	if(flagsvr) {
@@ -598,26 +579,28 @@ int main(int argc, char**argv, char**envp)
 	}
 	if(rqrun) {
 		make_interactive();
-		isi_addcpu();
+		add_dcpu_prefab();
 	}
 
+#ifndef WIN32
 	sigaction(SIGINT, &hnler, NULL);
 	sigaction(SIGTERM, &hnler, NULL);
 	sigaction(SIGHUP, &hnler, NULL);
 	sigaction(SIGPIPE, &hnler, NULL);
+#endif
 
 	isi_fetch_time(&LTUTime);
 	lucycles = 0; // how many cycles ran (debugging)
 	cux = 0; // CPU index - currently never changes
-	if(rqrun && allcpu.count && ((struct isiCPUInfo*)allcpu.table[cux])->ctl & ISICTL_DEBUG) {
-		showdiag_dcpu(allcpu.table[cux], 1);
+	if(rqrun && allcpu.size() && ((isiCPUInfo*)allcpu[cux])->ctl & ISICTL_DEBUG) {
+		showdiag_dcpu(allcpu[cux], 1);
 	}
 	while(!haltnow) {
 		isi_time_t CRun;
 
 		isi_fetch_time(&CRun);
 
-		if(!allcpu.count) {
+		if(!allcpu.size()) {
 			sleep(0);
 		} else {
 			lucycles += isi_run_cpu(cux);
@@ -629,15 +612,15 @@ int main(int argc, char**argv, char**envp)
 		if(CRun > LTUTime) { // one second between status output
 			if(rqrun && !flagdbg) { // interactive diag
 			double clkdelta;
-			float clkrate;
-			if(allcpu.count) showdiag_dcpu(allcpu.table[0], 0);
+			double clkrate;
+			if(allcpu.size()) showdiag_dcpu(allcpu[0], 0);
 			clkdelta = 1.0 + ((double)(CRun - LTUTime)) * 0.000000001;
 			clkrate = ((((double)lucycles) * clkdelta) * 0.001) / numberofcpus;
-			fprintf(stderr, "DC: %.5f sec, n=%d CPUs at % 9.3f kHz avg (% 8ld) [Q:% 8d, S:% 8d, S/n:% 8d]\r",
+			fprintf(stderr, "DC: %.5f sec, n=%d CPUs at % 9.3lf kHz avg (% 8lld) [Q:% 8d, S:% 8d, S/n:% 8d]\r",
 					clkdelta, numberofcpus, clkrate, gccq,
 					allstats.quanta, allstats.cpusched, allstats.cpusched / numberofcpus
 					);
-			if(allcpu.count) showdiag_up(4);
+			if(allcpu.size()) showdiag_up(4);
 			}
 			isi_add_time(&LTUTime, 1000000000);
 			lucycles = 0;
@@ -645,51 +628,41 @@ int main(int argc, char**argv, char**envp)
 			memset(&allstats, 0, sizeof(struct stats));
 			if(premlimit < 20) premlimit+=10;
 			if(paddlimit < 20) paddlimit+=2;
-			for(k = 0; k < allses.count; k++) {
-				struct isiSession *ses = allses.table[k];
-				ses->LTick(CRun);
+			for(k = 0; k < allses.size(); k++) {
+				allses[k]->LTick(CRun);
 			}
 		}
 
-		if(allses.pcount != allses.count) {
-			if(allses.ptable) {
-				free(allses.ptable);
-				allses.ptable = 0;
-			}
-			allses.pcount = allses.count;
-			allses.ptable = (struct pollfd*)isi_alloc(sizeof(struct pollfd) * allses.pcount);
-			if(!allses.ptable) {
-				isilogerr("malloc poll table fails!");
-			}
+		if(polltable.size() != allses.size()) {
+			polltable.resize(allses.size());
 			i = 0;
-			for(k = 0; k < allses.count; k++) {
-				allses.ptable[i].fd = allses.table[k]->sfd;
-				allses.ptable[i].events = POLLIN;
+			for(k = 0; k < allses.size(); k++) {
+				polltable[i].fd = allses[k]->sfd;
+				polltable[i].events = POLLIN;
 				i++;
 			}
 		}
-		if(allses.ptable) {
-			i = poll(allses.ptable, allses.pcount, 0);
+		if(polltable.size() > 0) {
+			i = poll(&polltable[0], polltable.size(), 0);
 		} else {
 			i = 0;
 		}
-		for(k = 0; k < allses.count; k++) {
-			struct isiSession *ses = allses.table[k];
+		for(auto ses : allses) {
 			if(ses && (ses->cmdqstart != ses->cmdqend))
 				ses->STick(CRun);
 		}
 		if(i > 0) {
-			for(k = 0; k < allses.pcount; k++) {
-				int ev = allses.ptable[k].revents;
+			for(k = 0; k < polltable.size(); k++) {
+				int ev = polltable[k].revents;
 				if(!ev) continue;
-				struct isiSession *ses = allses.table[k];
+				isiSession *ses = allses[k];
 				const char *etxt = 0;
 				/* Here be dragons */
 				if(ev & POLLERR) { etxt = "poll: FD error\n"; goto sessionerror; }
 				if(ev & POLLHUP) { etxt = "poll: FD hangup\n"; goto sessionerror; }
 				if(ev & POLLNVAL) { etxt = "poll: FD invalid\n"; goto sessionerror; }
 				if(ev & POLLIN) {
-					if(ses->sfd == allses.ptable[k].fd) {
+					if(ses->sfd == polltable[k].fd) {
 						if(ses->Recv(CRun))
 							goto sessionerror;
 					} else {
@@ -699,18 +672,18 @@ int main(int argc, char**argv, char**envp)
 				continue;
 sessionerror:
 				if(etxt) isilog(L_ERR, etxt);
-				if(ses->sfd == allses.ptable[k].fd) {
+				if(ses->sfd == polltable[k].fd) {
 					isi_delete_ses(ses);
-					k = allses.pcount;
+					break;
 				}
 			}
 		}
 		if(!flagdbg) {
 			cux++;
-			if(!(cux < allcpu.count)) {
+			if(!(cux < allcpu.size())) {
 				cux = 0;
 			}
-			numberofcpus = allcpu.count;
+			numberofcpus = allcpu.size();
 			if(numberofcpus < 1) numberofcpus = 1;
 		} else {
 			numberofcpus = 1;
@@ -722,15 +695,15 @@ sessionerror:
 	}
 	if(flagsvr) {
 		isilog(L_WARN, "closing connections\n");
-		while(allses.count) {
-			isi_delete_ses(allses.table[0]);
+		while(allses.size()) {
+			isi_delete_ses(allses[0]);
 		}
 	}
-	while(allobj.count) {
+	while(allobj.size()) {
 		size_t i;
-		for(i = 0; i < allobj.limit; i++) {
-			if(allobj.table[i].ptr) {
-				isi_delete_object(allobj.table[i].ptr);
+		for(i = 0; i < allobj.size(); i++) {
+			if(allobj[i].ptr) {
+				isi_delete_object(allobj[i].ptr);
 			}
 		}
 	}

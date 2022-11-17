@@ -13,16 +13,16 @@ ISIREFLECT(struct speaker_rvstate,
 
 class speaker : public isiInfo {
 public:
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
 
-	int HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t mtime);
-	int HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun);
+	int HWQ(isiInfo *src, uint32_t *msg, isi_time_t mtime);
+	int HWI(isiInfo *src, uint32_t *msg, isi_time_t crun);
 };
 
 struct isidcpudev speaker_Meta = {0x0001,0xc0f00001,0x5672746b};
-struct isiClass<speaker> speaker_Con(
-	ISIT_HARDWARE, "speaker", "2 Channel speaker",
+isiClass<speaker> speaker_Con(
+	ISIT_HARDWARE, "trk_gen_speaker", "2 Channel speaker",
 	&ISIREFNAME(struct speaker_rvstate),
 	NULL,
 	NULL,
@@ -42,12 +42,12 @@ int speaker::Reset()
 	return 0;
 }
 
-int speaker::HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t mtime)
+int speaker::HWQ(isiInfo *src, uint32_t *msg, isi_time_t mtime)
 {
 	return 0;
 }
 
-int speaker::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
+int speaker::HWI(isiInfo *src, uint32_t *msg, isi_time_t crun)
 {
 	struct speaker_rvstate *dev = (struct speaker_rvstate*)this->rvstate;
 	switch(msg[0]) {
@@ -63,7 +63,7 @@ int speaker::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
 	return 0;
 }
 
-int speaker::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int speaker::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) { /* message type, msg[1] is device index */
 	case 0: return 0; /* CPU finished reset */

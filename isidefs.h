@@ -18,6 +18,7 @@
 #define ISIT_MEM16       0x1000002
 #define ISIT_MEM24       0x1000003
 #define ISIT_MEM32       0x1000004
+#define ISIT_MEMORY_END  0x1ffffff
 #define ISIT_DISK        0x200ff00
 /* isi Class ranges */
 #define ISIT_CPU         0x3000000

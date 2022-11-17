@@ -3,27 +3,26 @@
 #include <string.h>
 #define DEBUG_DCPUHW 1
 
-struct DCPUBUS : public isiInfo {
+class DCPUBUS : public isiInfo {
+public:
 	DCPUBUS() {}
 	virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
-	virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Deattach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Reset(struct isiInfo *);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int QueryAttach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	virtual int Attach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Deattach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Reset(isiInfo *);
 	virtual int Delete();
+	virtual int on_attached(int32_t to_point, isiInfo *dev, int32_t from_point);
 };
 
 static isiClass<DCPUBUS> DCPUBUS_Con(ISIT_BUSDEV, "dcpu_hwbus", "DCPU Hardware backplane");
 
-void DCPUBUS_Register()
-{
+void DCPUBUS_Register() {
 	isi_register(&DCPUBUS_Con);
 }
 
-int DCPUBUS::Delete()
-{
+int DCPUBUS::Delete() {
 	if(this->busdev.table) {
 		isilog(L_DEBUG, "hwm: TODO correct free HW mem\n");
 		free(this->busdev.table);
@@ -36,36 +35,34 @@ int DCPUBUS::Delete()
 	return 0;
 }
 
-int DCPUBUS::QueryAttach(int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
+int DCPUBUS::QueryAttach(int32_t point, isiInfo *dev, int32_t devpoint) {
 	if(!dev) return -1;
 	if(point == ISIAT_UP) return -1;
 	if(dev->otype == ISIT_MEM16) return 0;
 	if(this->busdev.count < 1 && !ISIT_IS(dev->otype, ISIT_CPU)) return ISIERR_MISSPREREQ;
 	return 0;
 }
-int DCPUBUS::Attach(int32_t point, struct isiInfo *dev, int32_t devpoint)
-{
+int DCPUBUS::Attach(int32_t point, isiInfo *dev, int32_t devpoint) {
 	if(!dev) return -1;
 	if(point == ISIAT_UP) return -1;
-	isilog(L_DEBUG, "hwm: adding device c=%d n=%s\n", this->busdev.count, dev->meta->name);
+	isilog(L_DEBUG, "hwm: adding device c=%d n=%s\n", this->busdev.count, dev->meta->name.data());
 	return 0;
 }
 
-int DCPUBUS::Attached(int32_t point, struct isiInfo *dev, int32_t devpoint)
+int DCPUBUS::on_attached(int32_t to_point, isiInfo *dev, int32_t from_point)
 {
 	isilog(L_DEBUG, "hwm: updating attachments c=%d\n", this->busdev.count);
 	return 0;
 }
 
-int DCPUBUS::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int DCPUBUS::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	int r;
 	r = 0;
 	size_t h;
 	size_t hs;
 	h = msg[1];
-	struct isiInfo *dev;
+	isiInfo *dev;
 	hs = this->busdev.count;
 	if(hs > 0 && src == this->busdev.table[0].t) {
 		h++;
@@ -84,7 +81,7 @@ int DCPUBUS::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len,
 			if(!this->get_dev(h, &dev)) {
 				dev->Reset();
 				if(!isi_message_dev(this, h, msg, len, mtime)) {
-					isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name, h);
+					isilog(L_DEBUG, "hwm-reset: %s %ld\n", dev->meta->name.data(), h);
 				}
 			}
 		}
@@ -119,7 +116,7 @@ int DCPUBUS::Run(isi_time_t crun)
 {
 	size_t k;
 	size_t hs;
-	struct isiInfo *dev;
+	isiInfo *dev;
 	hs = this->busdev.count;
 	for(k = 1; k < hs; k++) {
 		if(!this->get_dev(k, &dev)) {

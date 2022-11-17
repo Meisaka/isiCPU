@@ -9,39 +9,34 @@ ISIREFLECT(struct EEROM_rvstate,
 )
 
 class EEROM : public isiInfo {
+public:
 	virtual int Init(const uint8_t *, size_t);
-	virtual int QuerySize(int, size_t *) const;
+	virtual size_t get_rv_size() const;
 	virtual int Load();
 	//virtual int Unload();
 	//virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
-	//virtual int QueryAttach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Attached(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
-	//virtual int Deattach(int32_t topoint, struct isiInfo *dev, int32_t frompoint);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	//virtual int QueryAttach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Attach(int32_t topoint, isiInfo *dev, int32_t frompoint);
+	//virtual int Deattach(int32_t topoint, isiInfo *dev, int32_t frompoint);
 	virtual int Reset();
 
-	int HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t crun);
-	int HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun);
+	int HWQ(isiInfo *src, uint32_t *msg, isi_time_t crun);
+	int HWI(isiInfo *src, uint32_t *msg, isi_time_t crun);
 };
 static struct isidcpudev EEROM_Meta = {0x0000,0x17400011,MF_ECIV};
 static isiClass<EEROM> EEROM_Con(
-	ISIT_HARDWARE, "rom", "Embedded ROM",
+	ISIT_HARDWARE, "trk_gen_eprom", "Embedded ROM",
 	&ISIREFNAME(struct EEROM_rvstate),
 	NULL,
 	NULL,
 	&EEROM_Meta);
-void EEROM_Register()
-{
+void EEROM_Register() {
 	isi_register(&EEROM_Con);
 }
 
-int EEROM::QuerySize(int t, size_t *sz) const
-{
-	switch(t) {
-	case 0: return *sz = sizeof(struct EEROM_rvstate), 0;
-	default: return 0;
-	}
+size_t EEROM::get_rv_size() const {
+	return sizeof(struct EEROM_rvstate);
 }
 
 int EEROM::Reset()
@@ -50,32 +45,40 @@ int EEROM::Reset()
 	if(!this->rvstate) return 1;
 	size_t rsize = ((struct EEROM_rvstate *)this->rvstate)->sz << 1;
 	if(rsize > this->nvsize) rsize = this->nvsize;
-	memcpy( ((memory64x16*)this->mem)->ram, this->nvstate, rsize);
+	uint16_t *src = (uint16_t*)this->nvstate;
+	for(uint32_t load_addr = 0; rsize; rsize--, load_addr++, src++) {
+		this->mem->d_wr(load_addr, *src);
+	}
 	return 0;
 }
 
-int EEROM::HWQ(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
+int EEROM::HWQ(isiInfo *src, uint32_t *msg, isi_time_t crun)
 {
 	msg[2] = ((struct EEROM_rvstate *)this->rvstate)->sz;
 	return 0;
 }
 
-int EEROM::HWI(struct isiInfo *src, uint32_t *msg, isi_time_t crun)
+int EEROM::HWI(isiInfo *src, uint32_t *msg, isi_time_t crun)
 {
 	size_t rsize = ((struct EEROM_rvstate *)this->rvstate)->sz << 1;
 	if(rsize > this->nvsize) rsize = this->nvsize;
+	uint16_t *nvptr = (uint16_t*)this->nvstate;
 	switch(msg[0]) {
 	case 0:
-		memcpy( ((memory64x16*)this->mem)->ram, this->nvstate, rsize );
+		for(uint32_t load_addr = 0; rsize; rsize--, load_addr++, nvptr++) {
+			this->mem->d_wr(load_addr, *nvptr);
+		}
 		break;
 	case 1:
-		memcpy( this->nvstate, ((memory64x16*)this->mem)->ram, rsize );
+		for(uint32_t load_addr = 0; rsize; rsize--, load_addr++, nvptr++) {
+			*nvptr = this->mem->d_rd(load_addr);
+		}
 		break;
 	}
 	return 0;
 }
 
-int EEROM::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int EEROM::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case ISE_RESET: return this->Reset();
@@ -123,7 +126,7 @@ int EEROM::Init(const uint8_t * cfg, size_t lcfg)
 	rvrom->sz = rqs >> 1;
 	if(fname) {
 		if(!this->nvstate) {
-			this->nvstate = isi_alloc(this->nvsize = rqs);
+			this->nvstate = isi_calloc(this->nvsize = rqs);
 		} else {
 			if(rqs > this->nvsize) rqs = this->nvsize;
 		}

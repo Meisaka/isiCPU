@@ -2,68 +2,41 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
+#include <vector>
 #include "isitypes.h"
 #include "netmsg.h"
 
-#define NSY_OBJ 1
-#define NSY_MEM 2
-#define NSY_MEMVALID 4
-#define NSY_SYNCOBJ 8
-#define NSY_SYNCMEM 16
+constexpr auto NSY_OBJ = 1;
+constexpr auto NSY_MEM = 2;
+constexpr auto NSY_MEMVALID = 4;
+constexpr auto NSY_SYNCOBJ = 8;
+constexpr auto NSY_SYNCMEM = 16;
 
-static struct isiSyncTable {
-	struct isiNetSync ** table;
-	uint32_t count;
-	uint32_t limit;
-	uint8_t * out;
-} allsync;
+static std::vector<isiNetSync *> allsync;
 
-extern isiObjTable allobj;
-extern isiSessionTable allses;
-int isi_create_object(int objtype, isiObject **out);
+extern std::vector<isiObjSlot> allobj;
+extern std::vector<isiSession*> allses;
 
-void isi_synctable_init()
-{
-	allsync.limit = 128;
-	allsync.count = 0;
-	allsync.table = (isiNetSync**)isi_alloc(allsync.limit * sizeof(void*));
-	allsync.out = (uint8_t *)isi_alloc(2048);
-}
-
-int isi_synctable_add(isiNetSync *sync)
-{
+int isi_synctable_add(isiNetSync *sync) {
 	if(!sync) return -1;
-	void *n;
-	if(allsync.count >= allsync.limit) {
-		n = isi_realloc(allsync.table, (allsync.limit + allsync.limit) * sizeof(void*));
-		if(!n) return -5;
-		allsync.limit += allsync.limit;
-		allsync.table = (isiNetSync**)n;
-	}
-	allsync.table[allsync.count++] = sync;
 	// TODO could probably sort this better, based on rate/id/hash.
+	allsync.push_back(sync);
 	return 0;
 }
 
 static isiClass<isiNetSync> isiNetSync_C(ISIT_NETSYNC, "<isiNetSync>", "");
 
-void isi_register_netsync()
-{
+void isi_register_netsync() {
 	isi_register(&isiNetSync_C);
 }
 
-int isi_create_sync(isiNetSync **sync)
-{
+int isi_create_sync(isiNetSync **sync) {
 	return isi_create_object(ISIT_NETSYNC, NULL, (isiObject**)sync);
 }
 
-int isi_find_sync(isiObject *target, isiNetSync **sync)
-{
-	size_t i;
+int isi_find_sync(isiObject *target, isiNetSync **sync) {
 	if(!target) return 0;
-	for(i = 0; i < allsync.count; i++) {
-		isiNetSync *ns = allsync.table[i];
+	for(auto ns : allsync) {
 		if(ns && (ns->target.id == target->id || ns->memobj.id == target->id)) {
 			if(sync) {
 				*sync = ns;
@@ -74,12 +47,9 @@ int isi_find_sync(isiObject *target, isiNetSync **sync)
 	return 0;
 }
 
-int isi_find_devmem_sync(isiObject *target, isiObject *memtgt, isiNetSync **sync)
-{
-	size_t i;
+int isi_find_devmem_sync(isiObject *target, isiObject *memtgt, isiNetSync **sync) {
 	if(!target) return 0;
-	for(i = 0; i < allsync.count; i++) {
-		isiNetSync *ns = allsync.table[i];
+	for(auto ns : allsync) {
 		if(ns && ns->synctype == ISIN_SYNC_MEMDEV
 			&& ns->target.id == target->id
 			&& ns->memobj.id == memtgt->id) {
@@ -92,8 +62,7 @@ int isi_find_devmem_sync(isiObject *target, isiObject *memtgt, isiNetSync **sync
 	return 0;
 }
 
-int isi_add_memsync(isiObject *target, uint32_t base, uint32_t extent, size_t rate)
-{
+int isi_add_memsync(isiObject *target, uint32_t base, uint32_t extent, size_t rate) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_is_infodev(target)) return -1;
@@ -114,8 +83,7 @@ int isi_add_memsync(isiObject *target, uint32_t base, uint32_t extent, size_t ra
 	return ns->extents;
 }
 
-int isi_add_sync_extent(isiObject *target, uint32_t base, uint32_t extent)
-{
+int isi_add_sync_extent(isiObject *target, uint32_t base, uint32_t extent) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_is_infodev(target)) return -1;
@@ -136,8 +104,7 @@ int isi_add_sync_extent(isiObject *target, uint32_t base, uint32_t extent)
 	return ns->extents - 1;
 }
 
-int isi_set_sync_extent(isiObject *target, uint32_t index, uint32_t base, uint32_t extent)
-{
+int isi_set_sync_extent(isiObject *target, uint32_t index, uint32_t base, uint32_t extent) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_is_infodev(target)) return -1;
@@ -159,8 +126,7 @@ int isi_set_sync_extent(isiObject *target, uint32_t index, uint32_t base, uint32
 	return ns->extents - 1;
 }
 
-int isi_add_devsync(isiObject *target, size_t rate)
-{
+int isi_add_devsync(isiObject *target, size_t rate) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_find_sync(target, &ns)) {
@@ -180,8 +146,7 @@ int isi_add_devsync(isiObject *target, size_t rate)
 	return 0;
 }
 
-int isi_resync_dev(isiObject *target)
-{
+int isi_resync_dev(isiObject *target) {
 	isiNetSync *ns = 0;
 	if(!isi_find_sync(target, &ns)) {
 		return -1;
@@ -190,11 +155,8 @@ int isi_resync_dev(isiObject *target)
 	return 0;
 }
 
-int isi_resync_all()
-{
-	size_t i;
-	for(i = 0; i < allsync.count; i++) {
-		isiNetSync *ns = allsync.table[i];
+int isi_resync_all() {
+	for(auto ns : allsync) {
 		if(ns && ns->ctl) {
 			ns->ctl = 0;
 		}
@@ -202,8 +164,7 @@ int isi_resync_all()
 	return 0;
 }
 
-int isi_add_devmemsync(isiObject *target, isiObject *memtarget, size_t rate)
-{
+int isi_add_devmemsync(isiObject *target, isiObject *memtarget, size_t rate) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_is_memory(memtarget)) return -1;
@@ -227,8 +188,7 @@ int isi_add_devmemsync(isiObject *target, isiObject *memtarget, size_t rate)
 	return 0;
 }
 
-int isi_set_devmemsync_extent(isiObject *target, isiObject *memtarget, uint32_t index, uint32_t base, uint32_t extent)
-{
+int isi_set_devmemsync_extent(isiObject *target, isiObject *memtarget, uint32_t index, uint32_t base, uint32_t extent) {
 	isiNetSync *ns = 0;
 	int r;
 	if(!isi_is_memory(memtarget)) return -1;
@@ -256,8 +216,7 @@ int isi_set_devmemsync_extent(isiObject *target, isiObject *memtarget, uint32_t 
 	return ns->extents - 1;
 }
 
-int isi_remove_sync(isiObject *target)
-{
+int isi_remove_sync(isiObject *target) {
 	isiNetSync *ns = 0;
 	if(!isi_find_sync(target, &ns)) {
 		isilog(L_DEBUG, "netsync: request to remove non-existent sync\n");
@@ -266,12 +225,11 @@ int isi_remove_sync(isiObject *target)
 	return 0;
 }
 
-int isi_find_obj_index(isiObject *target)
-{
+int isi_find_obj_index(isiObject *target) {
 	size_t i;
 	if(!target) return -1;
-	for(i = 0; i < allobj.count; i++) {
-		isiObject *obj = allobj.table[i].ptr;
+	for(i = 0; i < allobj.size(); i++) {
+		isiObject *obj = allobj[i].ptr;
 		if(obj && obj->id == target->id) {
 			return i;
 		}
@@ -279,40 +237,38 @@ int isi_find_obj_index(isiObject *target)
 	return -1;
 }
 
-void isi_run_sync(isi_time_t crun)
-{
-	size_t i, k;
+void isi_run_sync(isi_time_t crun) {
+	size_t k;
 	int x;
-	for(i = 0; i < allsync.count; i++) {
-		isiNetSync *ns = allsync.table[i];
-		memory64x16 *mem = 0;
+	isiMsgRef allsync_out = make_msg();
+	for(isiNetSync *ns : allsync) {
+		isiMemory *mem = nullptr;
 		if(!ns) continue;
 		if(ns->ctl) { /* check cache indexes */
 			if((ns->ctl & NSY_OBJ) && (
 				!ns->target.id
-				|| !allobj.table[ns->target_index].ptr
-				|| allobj.table[ns->target_index].ptr->id != ns->target.id))
+				|| !allobj[ns->target_index].ptr
+				|| allobj[ns->target_index].ptr->id != ns->target.id))
 			{
 				ns->ctl ^= NSY_OBJ;
 				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
 			if((ns->ctl & NSY_MEM) && (
 				!ns->memobj.id
-				|| !allobj.table[ns->memobj_index].ptr
-				|| allobj.table[ns->memobj_index].ptr->id != ns->memobj.id))
+				|| !allobj[ns->memobj_index].ptr
+				|| allobj[ns->memobj_index].ptr->id != ns->memobj.id))
 			{
 				ns->ctl &= ~(NSY_MEMVALID|NSY_MEM|NSY_SYNCMEM);
 				isilog(L_DEBUG, "netsync: invalidated index\n");
 			}
 		}
 		if((ns->ctl & NSY_MEM)) {
-			mem = (memory64x16*)allobj.table[ns->memobj_index].ptr;
+			mem = (isiMemory*)allobj[ns->memobj_index].ptr;
 			if(mem->info & ISI_RAMINFO_SCAN) ns->ctl |= NSY_SYNCMEM;
 		}
 	}
-	for(i = 0; i < allsync.count; i++) {
-		isiNetSync *ns = allsync.table[i];
-		memory64x16 *mem = 0;
+	for(isiNetSync *ns : allsync) {
+		isiMemory *mem = nullptr;
 		isiInfo *dev = 0;
 		if(!ns) continue;
 		if(!isi_time_lt(&ns->nrun, &crun))
@@ -328,23 +284,18 @@ void isi_run_sync(isi_time_t crun)
 				isilog(L_DEBUG, "netsync: adding mem index %x\n", ns->ctl);
 			}
 			if((ns->ctl & NSY_MEM)) {
-				mem = (memory64x16*)allobj.table[ns->memobj_index].ptr;
+				mem = (isiMemory*)allobj[ns->memobj_index].ptr;
 				if(mem->info & ISI_RAMINFO_SCAN) mem->info ^= ISI_RAMINFO_SCAN;
 			}
 			if(mem && !(ns->ctl & NSY_MEMVALID)) {
-				uint32_t mask = 0xffff;
 				uint32_t addr;
 				uint32_t alen;
 				uint32_t ex, z;
-				uint32_t idx;
 				for(ex = ns->extents; ex--; ) {
 					addr = ns->base[ex];
 					alen = ns->len[ex];
-					for(z = 0; z < alen; z++) {
-						idx = (addr+z) & mask;
-						if(idx > 0x10000) { isilog(L_ERR, "sync: over clear\n"); }
-						mem->ctl[idx] &= 0xffff0000;
-						mem->ctl[idx] |= (ISI_RAMCTL_DELTA|ISI_RAMCTL_SYNC) | ((~mem->ram[idx]) & 0xffff);
+					for(z = 0; z < alen; z++, addr++) {
+						mem->sync_set(addr, ISI_RAMCTL_DELTA|ISI_RAMCTL_SYNC);
 					}
 				}
 				mem->info |= ISI_RAMINFO_SCAN;
@@ -361,88 +312,94 @@ void isi_run_sync(isi_time_t crun)
 				ns->ctl |= NSY_OBJ;
 				isilog(L_DEBUG, "netsync: adding dev index %x\n", ns->ctl);
 			}
-			if((ns->ctl & NSY_OBJ)) dev = (isiInfo *)allobj.table[ns->target_index].ptr;
+			if((ns->ctl & NSY_OBJ)) dev = (isiInfo *)allobj[ns->target_index].ptr;
 			break;
 		}
 		switch(ns->synctype) {
 		case ISIN_SYNC_MEM:
 		case ISIN_SYNC_MEMDEV:
 			if((ns->ctl & NSY_MEMVALID) && (ns->ctl & NSY_SYNCMEM)) {
-				uint32_t mask = 0xffff;
-				uint32_t addr;
-				uint32_t alen;
 				uint32_t idx;
 				uint32_t ex, z;
-				uint32_t sta = 0;
-				uint32_t sln = 0;
-				uint32_t ndln = 0;
-				int fsync = 1;
+				bool is_full_sync = true;
 				for(ex = ns->extents; ex--; ) {
-					addr = ns->base[ex];
-					alen = ns->len[ex];
-					sta = 0;
-					sln = 0;
-					ndln = 0;
-					*(uint32_t*)(allsync.out+4) = mem->id;
-					uint8_t *wlo = allsync.out+8;
-					uint16_t *mw = (uint16_t*)(wlo);
-					uint8_t *wlimit = allsync.out+1294;
+					uint32_t addr = ns->base[ex];
+					uint32_t alen = ns->len[ex];
+					uint32_t sync_addr = 0;
+					uint32_t sync_len = 0; // this is also if we are writing a block or not
+					uint32_t nodelta_len = 0;
+					allsync_out->u32[0] = mem->id;
+					constexpr uint32_t SYNC32_RECLEN = 5; // mess with alignment >:)
+					// TODO mem_t could be different, move this to a memory function?
+					// move the data pointer to after the ID, where the blocks start
+					uint16_t *data_start = (uint16_t*)(allsync_out->u8 + 4);
+					uint16_t *data16 = data_start;
+					uint8_t *sync_hdr;
+					// reserve an extra 12 bytes at the end so we don't go over (yes, I'm lazy)
+					uint16_t *wlimit = (uint16_t*)(allsync_out->u8+allsync_out->limit - 12);
 					for(z = 0; z < alen; z++) {
-						idx = (addr+z) & mask;
-						if(sln) {
-							sln+=2;
-							*mw = mem->ram[idx] & 0xffff;
-							mw++;
+						idx = addr;
+						if(sync_len) { // add words of data while a sync block is active
+							sync_len += 2;
+							*data16 = mem->i_rd(addr);
+							data16++;
 						}
-						if(((mem->ram[idx] & 0xffff) ^ (mem->ctl[idx] & 0xffff))) {
-							if(!sln) {
-								sta = idx << 1;
-								sln = 2;
-								mw = (uint16_t*)(wlo+6);
-								*mw = mem->ram[idx] & 0xffff;
-								mw++;
+						// does this word of memory need synching? (clears delta flag)
+						if(mem->sync_rd(addr) & ISI_RAMCTL_DELTA) {
+							nodelta_len = 0;
+							if(!sync_len) {
+								// start a sync block to put this word in
+								sync_addr = mem->byte_offset(addr);
+								// make room for the header (it's written to later)
+								data16 = (uint16_t*)(sync_hdr+SYNC32_RECLEN);
+								// put the first word
+								*data16 = mem->i_rd(addr);
+								data16++;
+								sync_len = 2;
 							}
-							ndln = 0;
-							mem->ctl[idx] &= 0xfffe0000;
-							mem->ctl[idx] |= (mem->ram[idx] & 0xffffu);
 						} else {
-							if(sln) ndln+=2;
+							// keep track of how many words *don't* need updating
+							if(sync_len) nodelta_len += 2;
 						}
-						if(((uint8_t*)mw) >= wlimit || ndln > 12 || sln >= 1200) {
-							wlo[0] = (uint8_t)(sta);
-							wlo[1] = (uint8_t)(sta>>8);
-							wlo[2] = (uint8_t)(sta>>16);
-							wlo[3] = (uint8_t)(sta>>24);
-							wlo[4] = (uint8_t)(sln);
-							wlo[5] = (uint8_t)(sln >> 8);
-							wlo = (uint8_t*)mw;
-							ndln = sln = sta = 0;
-							if(((uint8_t*)mw) >= wlimit) {
-								fsync = 0;
+						// if we hit our limits or are synching more than we need to
+						// the nodelta_len limit is a block with extra bytes vs size of 2 blocks
+						if(data16 >= wlimit || nodelta_len >= 8 || sync_len >= 250) {
+							// backup over words that don't need to be sent
+							// nodelta_len is bytes so some casts are required
+							data16 = (uint16_t*)(((uint8_t*)data16) - nodelta_len);
+							sync_len -= nodelta_len;
+							// write the header and close the block
+							sync_hdr[0] = (uint8_t)(sync_addr);
+							sync_hdr[1] = (uint8_t)(sync_addr>>8);
+							sync_hdr[2] = (uint8_t)(sync_addr>>16);
+							sync_hdr[3] = (uint8_t)(sync_addr>>24);
+							sync_hdr[4] = (uint8_t)(sync_len);
+							nodelta_len = sync_len = sync_addr = 0;
+							if(data16 >= wlimit) {
+								// need another pass to get everything
+								is_full_sync = false;
 								break;
 							}
 						}
 					}
-					if(sln) {
-						wlo[0] = (uint8_t)(sta);
-						wlo[1] = (uint8_t)(sta>>8);
-						wlo[2] = (uint8_t)(sta>>16);
-						wlo[3] = (uint8_t)(sta>>24);
-						wlo[4] = (uint8_t)(sln);
-						wlo[5] = (uint8_t)(sln >> 8);
-						isilog(L_DEBUG, "netsync-m: %04x+%x\n", sta, sln);
+					if(sync_len) { // close the block if it's open
+						data16 = (uint16_t*)(((uint8_t*)data16) - nodelta_len);
+						sync_len -= nodelta_len;
+						sync_hdr[0] = (uint8_t)(sync_addr);
+						sync_hdr[1] = (uint8_t)(sync_addr>>8);
+						sync_hdr[2] = (uint8_t)(sync_addr>>16);
+						sync_hdr[3] = (uint8_t)(sync_addr>>24);
+						sync_hdr[4] = (uint8_t)(sync_len);
+						isilog(L_DEBUG, "netsync-m: %04x+%x\n", sync_addr, sync_len);
 					}
-					if((uint8_t*)mw > allsync.out + 8) {
-						*(uint32_t*)(allsync.out) = ISIMSG(SYNCMEM32, 0, ((uint8_t*)mw - (allsync.out + 4)));
-						for(k = 0; k < allses.count; k++) {
-							isiSession *ses;
-							ses = allses.table[k];
-							if(!ses) continue;
-							session_write_msgex(ses, allsync.out);
-						}
+					if(data16 > data_start) {
+						allsync_out->code = ISIMSG(SYNCMEM32, 0);
+						allsync_out->length = ((uint8_t*)data16) - allsync_out->u8;
+						session_multicast_msg(allsync_out);
+						allsync_out = make_msg();
 					}
 				}
-				if(fsync) {
+				if(is_full_sync) {
 					ns->ctl &= ~NSY_SYNCMEM;
 				}
 			}
@@ -454,29 +411,27 @@ void isi_run_sync(isi_time_t crun)
 				isiReflection const *rfl;
 				if(dev->meta->rvproto) {
 					rfl = dev->meta->rvproto;
-					*(uint32_t*)(allsync.out+4) = dev->id;
-					if(rfl->length > 1300) { isilog(L_ERR, "sync: over write rv\n"); }
-					memcpy(allsync.out+8, dev->rvstate, rfl->length);
-					*(uint32_t*)(allsync.out) = ISIMSG(SYNCRVS, 0, 4+(rfl->length));
-					for(k = 0; k < allses.count; k++) {
-						isiSession *ses;
-						ses = allses.table[k];
-						if(!ses) continue;
-						session_write_msgex(ses, allsync.out);
+					allsync_out->u32[0] = dev->id;
+					if(rfl->length > allsync_out->limit) {
+						isilog(L_ERR, "sync: over write rv\n");
 					}
+					memcpy(allsync_out->u32 + 1, dev->rvstate, rfl->length);
+					allsync_out->code = ISIMSG(SYNCRVS, 0);
+					allsync_out->length = 4 + (rfl->length);
+					session_multicast_msg(allsync_out);
+					allsync_out = make_msg();
 				}
 				if(dev->meta->svproto) {
 					rfl = dev->meta->svproto;
-					*(uint32_t*)(allsync.out+4) = dev->id;
-					if(rfl->length > 1300) { isilog(L_ERR, "sync: over write sv\n"); }
-					memcpy(allsync.out+8, dev->svstate, rfl->length);
-					*(uint32_t*)(allsync.out) = ISIMSG(SYNCSVS, 0, 4+(rfl->length));
-					for(k = 0; k < allses.count; k++) {
-						isiSession *ses;
-						ses = allses.table[k];
-						if(!ses) continue;
-						session_write_msgex(ses, allsync.out);
+					allsync_out->u32[0] = dev->id;
+					if(rfl->length > allsync_out->limit) {
+						isilog(L_ERR, "sync: over write sv\n");
 					}
+					memcpy(allsync_out->u32 + 1, dev->svstate, rfl->length);
+					allsync_out->code = ISIMSG(SYNCSVS, 0);
+					allsync_out->length = 4 + (rfl->length);
+					session_multicast_msg(allsync_out);
+					allsync_out = make_msg();
 				}
 			}
 			break;
@@ -492,15 +447,11 @@ void isi_run_sync(isi_time_t crun)
 	}
 }
 
-void isi_debug_dump_synctable()
-{
-	uint32_t i = 0;
-	while(i < allsync.count) {
-		isiNetSync *ns = allsync.table[i];
+void isi_debug_dump_synctable() {
+	for(auto ns : allsync) {
 		isilog(L_DEBUG, "sync-list: [%08x]: %x -> %#x\n", ns->id, ns->otype, ns->target_index);
 		isilog(L_DEBUG, ": rate=%ld\n", ns->rate);
 		isilog(L_DEBUG, ": block[0]=%08x +%x\n", ns->base[0], ns->len[0]);
-		i++;
 	}
 }
 

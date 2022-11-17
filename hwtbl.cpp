@@ -1,6 +1,7 @@
 /*
  * This file defines the hardware hooks table
  */
+#ifdef ISI_BUILD_DCPU
 #include "dcpuhw.h"
 
 /* Hardware functions */
@@ -17,9 +18,12 @@ void imva_Register();
 void speaker_Register();
 void vppDACA_Register();
 void KaiHIC_Register();
-
-void isi_register_objects()
-{
+#else
+class isiInfo;
+void showdiag_dcpu(const isiInfo *, int) {}
+#endif
+void isi_register_objects() {
+#ifdef ISI_BUILD_DCPU
 	Memory_Register();
 	Disk_Register();
 	DCPU_Register();
@@ -33,5 +37,6 @@ void isi_register_objects()
 	speaker_Register();
 	vppDACA_Register();
 	KaiHIC_Register();
+#endif
 }
 

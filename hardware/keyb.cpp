@@ -20,13 +20,13 @@ ISIREFLECT(struct LKBD,
 )
 
 class Keyboard : public isiInfo {
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
 };
 
 static struct isidcpudev const Keyboard_Meta = {0x0001,0x30cf7406,MF_ECIV};
 static isiClass<Keyboard> Keyboard_Con = {
-	ISIT_HARDWARE, "keyboard", "Generic Keyboard",
+	ISIT_HARDWARE, "txc_gen_keyboard", "Generic Keyboard",
 	&ISIREFNAME(struct LKBD),
 	NULL,
 	NULL,
@@ -34,7 +34,7 @@ static isiClass<Keyboard> Keyboard_Con = {
 };
 static struct isidcpudev const Keyboard_MetaTC = {0x0001,0x30c17406,MF_ECIV};
 static isiClass<Keyboard> Keyboard_ConTC = {
-	ISIT_HARDWARE, "tc_keyboard", "Generic Keyboard [TC]",
+	ISIT_HARDWARE, "tcm_gen_keyboard", "Generic Keyboard [TC]",
 	&ISIREFNAME(struct LKBD),
 	NULL,
 	NULL,
@@ -100,7 +100,7 @@ int Keyboard::Reset()
 	return 0;
 }
 
-int Keyboard::MsgIn(struct isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int Keyboard::MsgIn(isiInfo *host, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	struct LKBD* kyb;
 	uint32_t iom[3];

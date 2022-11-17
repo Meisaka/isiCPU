@@ -20,15 +20,15 @@ ISIREFLECT(struct Clock_rvstate,
 class Clock : public isiInfo {
 public:
 	virtual int Run(isi_time_t crun);
-	virtual int MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
+	virtual int MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime);
 	virtual int Reset();
 
-	int HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun);
+	int HWI(isiInfo *src, uint32_t *msg, int len, isi_time_t crun);
 };
 
 static struct isidcpudev Clock_Meta = {0x0001,0x12d0b402,MF_ECIV};
 static isiClass<Clock> Clock_Con(
-	ISIT_HARDWARE, "clock", "Generic Clock",
+	ISIT_HARDWARE, "txc_gen_clock", "Generic Clock",
 	&ISIREFNAME(struct Clock_rvstate),
 	NULL,
 	NULL,
@@ -50,7 +50,7 @@ int Clock::Reset()
 	return 0;
 }
 
-int Clock::HWI(struct isiInfo *src, uint32_t *msg, int len, isi_time_t crun)
+int Clock::HWI(isiInfo *src, uint32_t *msg, int len, isi_time_t crun)
 {
 	struct Clock_rvstate *clk = (struct Clock_rvstate*)this->rvstate;
 	switch(msg[0]) {
@@ -99,7 +99,7 @@ int Clock::Run(isi_time_t crun)
 	return 0;
 }
 
-int Clock::MsgIn(struct isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
+int Clock::MsgIn(isiInfo *src, int32_t lsindex, uint32_t *msg, int len, isi_time_t mtime)
 {
 	switch(msg[0]) {
 	case ISE_RESET: return 0;
